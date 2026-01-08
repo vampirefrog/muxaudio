@@ -32,6 +32,11 @@ static const struct mux_codec_info codec_info_table[] = {
 		.type = MUX_CODEC_MP3,
 		.name = "mp3",
 		.description = "MP3 audio codec"
+	},
+	{
+		.type = MUX_CODEC_AAC,
+		.name = "aac",
+		.description = "AAC audio codec"
 	}
 };
 
@@ -56,9 +61,14 @@ static const struct mux_codec_ops *codec_ops_table[MUX_CODEC_MAX] = {
 	[MUX_CODEC_OPUS] = NULL,
 #endif
 #ifdef HAVE_FLAC
-	[MUX_CODEC_FLAC] = &mux_codec_flac_ops
+	[MUX_CODEC_FLAC] = &mux_codec_flac_ops,
 #else
-	[MUX_CODEC_FLAC] = NULL
+	[MUX_CODEC_FLAC] = NULL,
+#endif
+#ifdef HAVE_AAC
+	[MUX_CODEC_AAC] = &mux_codec_aac_ops
+#else
+	[MUX_CODEC_AAC] = NULL
 #endif
 };
 

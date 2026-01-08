@@ -30,7 +30,7 @@ static void usage(const char *prog)
 	fprintf(stderr, "Decode multiplexed stream to audio and side channel data\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Options:\n");
-	fprintf(stderr, "  -c, --codec CODEC      Codec to use (pcm, mp3, vorbis, opus, flac)\n");
+	fprintf(stderr, "  -c, --codec CODEC      Codec to use (pcm, mp3, vorbis, opus, flac, aac)\n");
 	fprintf(stderr, "                         Default: flac\n");
 	fprintf(stderr, "  -v, --verbose          Print stream information to stderr\n");
 	fprintf(stderr, "  -h, --help             Show this help\n");
@@ -55,6 +55,8 @@ static enum mux_codec_type parse_codec(const char *name)
 		return MUX_CODEC_OPUS;
 	if (strcmp(name, "flac") == 0)
 		return MUX_CODEC_FLAC;
+	if (strcmp(name, "aac") == 0)
+		return MUX_CODEC_AAC;
 	return -1;
 }
 

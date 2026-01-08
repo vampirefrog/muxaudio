@@ -28,6 +28,7 @@ find_library(VORBIS_LIBRARY vorbis)
 find_library(VORBISENC_LIBRARY vorbisenc)
 find_library(OPUS_LIBRARY opus)
 find_library(FLAC_LIBRARY FLAC)
+find_library(FDK_AAC_LIBRARY fdk-aac)
 
 if(NOT LAME_LIBRARY)
 	message(WARNING "libmp3lame not found - MP3 encoding will not be available")
@@ -47,6 +48,10 @@ endif()
 
 if(NOT OGG_LIBRARY OR NOT FLAC_LIBRARY)
 	message(WARNING "libogg/libFLAC not found - FLAC codec will not be available")
+endif()
+
+if(NOT FDK_AAC_LIBRARY)
+	message(WARNING "libfdk-aac not found - AAC codec will not be available")
 endif()
 
 # Source files
@@ -78,6 +83,11 @@ if(OGG_LIBRARY AND FLAC_LIBRARY)
 	add_compile_definitions(HAVE_FLAC)
 endif()
 
+if(FDK_AAC_LIBRARY)
+	list(APPEND MUXAUDIO_SOURCES src/codec_aac.c)
+	add_compile_definitions(HAVE_AAC)
+endif()
+
 # Library target
 add_library(muxaudio ${MUXAUDIO_SOURCES})
 
@@ -107,6 +117,10 @@ endif()
 
 if(OGG_LIBRARY AND FLAC_LIBRARY)
 	target_link_libraries(muxaudio ${OGG_LIBRARY} ${FLAC_LIBRARY})
+endif()
+
+if(FDK_AAC_LIBRARY)
+	target_link_libraries(muxaudio ${FDK_AAC_LIBRARY})
 endif()
 
 # Installation
@@ -177,4 +191,9 @@ if(OGG_LIBRARY AND FLAC_LIBRARY)
 
 	add_executable(test_flac_validation tests/test_flac_validation.c)
 	target_link_libraries(test_flac_validation muxaudio test_utils m)
+endif()
+
+if(FDK_AAC_LIBRARY)
+	add_executable(test_aac_simple tests/test_aac_simple.c)
+	target_link_libraries(test_aac_simple muxaudio m)
 endif()

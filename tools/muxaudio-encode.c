@@ -34,7 +34,7 @@ static void usage(const char *prog)
 	fprintf(stderr, "Encode audio from stdin with optional side channel data from fd 3\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Options:\n");
-	fprintf(stderr, "  -c, --codec CODEC      Codec to use (pcm, mp3, vorbis, opus, flac)\n");
+	fprintf(stderr, "  -c, --codec CODEC      Codec to use (pcm, mp3, vorbis, opus, flac, aac)\n");
 	fprintf(stderr, "                         Default: flac\n");
 	fprintf(stderr, "  -r, --rate RATE        Sample rate in Hz (default: 44100)\n");
 	fprintf(stderr, "  -n, --channels NUM     Number of channels (default: 2)\n");
@@ -62,6 +62,8 @@ static enum mux_codec_type parse_codec(const char *name)
 		return MUX_CODEC_OPUS;
 	if (strcmp(name, "flac") == 0)
 		return MUX_CODEC_FLAC;
+	if (strcmp(name, "aac") == 0)
+		return MUX_CODEC_AAC;
 	return -1;
 }
 
@@ -80,7 +82,7 @@ static int encode_stream(const struct encoder_config *config)
 
 	/* Set up codec parameters */
 	if (config->codec == MUX_CODEC_MP3 || config->codec == MUX_CODEC_VORBIS ||
-	    config->codec == MUX_CODEC_OPUS) {
+	    config->codec == MUX_CODEC_OPUS || config->codec == MUX_CODEC_AAC) {
 		params[num_params].name = "bitrate";
 		params[num_params].value.i = config->bitrate;
 		num_params++;

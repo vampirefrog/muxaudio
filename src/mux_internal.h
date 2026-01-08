@@ -174,5 +174,6 @@ extern const struct mux_codec_ops mux_codec_opus_ops;
 extern const struct mux_codec_ops mux_codec_vorbis_ops;
 extern const struct mux_codec_ops mux_codec_flac_ops;
 extern const struct mux_codec_ops mux_codec_mp3_ops;
+extern const struct mux_codec_ops mux_codec_aac_ops;
 
 #endif /* MUX_INTERNAL_H */

@@ -24,6 +24,7 @@ enum mux_codec_type {
 	MUX_CODEC_VORBIS,
 	MUX_CODEC_FLAC,
 	MUX_CODEC_MP3,
+	MUX_CODEC_AAC,
 	MUX_CODEC_MAX
 };
 
