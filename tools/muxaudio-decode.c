@@ -43,22 +43,6 @@ static void usage(const char *prog)
 	fprintf(stderr, "  fd 3:   Side channel data (if present in stream)\n");
 }
 
-static enum mux_codec_type parse_codec(const char *name)
-{
-	if (strcmp(name, "pcm") == 0)
-		return MUX_CODEC_PCM;
-	if (strcmp(name, "mp3") == 0)
-		return MUX_CODEC_MP3;
-	if (strcmp(name, "vorbis") == 0)
-		return MUX_CODEC_VORBIS;
-	if (strcmp(name, "opus") == 0)
-		return MUX_CODEC_OPUS;
-	if (strcmp(name, "flac") == 0)
-		return MUX_CODEC_FLAC;
-	if (strcmp(name, "aac") == 0)
-		return MUX_CODEC_AAC;
-	return -1;
-}
 
 static int decode_stream(const struct decoder_config *config)
 {
@@ -165,8 +149,7 @@ int main(int argc, char **argv)
 	while ((opt = getopt_long(argc, argv, "c:vh", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'c':
-			config.codec = parse_codec(optarg);
-			if (config.codec == (enum mux_codec_type)-1) {
+			if (mux_codec_from_name(optarg, &config.codec) != MUX_OK) {
 				fprintf(stderr, "Error: Unknown codec '%s'\n", optarg);
 				usage(argv[0]);
 				return 1;

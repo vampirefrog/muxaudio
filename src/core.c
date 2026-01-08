@@ -83,6 +83,31 @@ int mux_list_codecs(const struct mux_codec_info **codecs, int *count)
 	return MUX_OK;
 }
 
+int mux_codec_from_name(const char *name, enum mux_codec_type *codec)
+{
+	int i;
+
+	if (!name || !codec)
+		return MUX_ERROR_INVAL;
+
+	for (i = 0; i < MUX_CODEC_MAX; i++) {
+		if (strcmp(codec_info_table[i].name, name) == 0) {
+			*codec = codec_info_table[i].type;
+			return MUX_OK;
+		}
+	}
+
+	return MUX_ERROR_INVAL;
+}
+
+const char *mux_codec_to_name(enum mux_codec_type codec)
+{
+	if (codec < 0 || codec >= MUX_CODEC_MAX)
+		return NULL;
+
+	return codec_info_table[codec].name;
+}
+
 const struct mux_codec_ops *mux_get_codec_ops(enum mux_codec_type type)
 {
 	if (type < 0 || type >= MUX_CODEC_MAX)

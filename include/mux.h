@@ -126,6 +126,12 @@ struct mux_decoder;
 int mux_list_codecs(const struct mux_codec_info **codecs, int *count);
 
 /*
+ * Codec name conversion
+ */
+int mux_codec_from_name(const char *name, enum mux_codec_type *codec);
+const char *mux_codec_to_name(enum mux_codec_type codec);
+
+/*
  * Parameter introspection
  */
 int mux_get_encoder_params(enum mux_codec_type codec_type,
