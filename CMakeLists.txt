@@ -174,4 +174,7 @@ endif()
 if(OGG_LIBRARY AND FLAC_LIBRARY)
 	add_executable(test_flac_simple tests/test_flac_simple.c)
 	target_link_libraries(test_flac_simple muxaudio m)
+
+	add_executable(test_flac_validation tests/test_flac_validation.c)
+	target_link_libraries(test_flac_validation muxaudio test_utils m)
 endif()
