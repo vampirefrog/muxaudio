@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /*
- * muxaudio-encode - Encode audio from stdin with side channel data from fd 3
+ * mux - Encode audio from stdin with side channel data from fd 3
  *
- * Usage: muxaudio-encode [options]
+ * Usage: mux [options]
  *
  * Reads raw PCM audio (int16 stereo) from stdin, side channel data from fd 3,
  * and writes the multiplexed stream to stdout.

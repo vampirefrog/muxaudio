@@ -497,12 +497,12 @@ const struct mux_error_info *mux_decoder_get_error(struct mux_decoder *dec);
 
 ## Command-Line Tools
 
-### muxaudio-encode
+### mux
 
 Encode raw PCM audio from stdin with optional side channel data from fd 3.
 
 ```bash
-muxaudio-encode [options] < input.raw > output.mux
+mux [options] < input.raw > output.mux
 ```
 
 **Options**:
@@ -516,21 +516,21 @@ muxaudio-encode [options] < input.raw > output.mux
 **Examples**:
 ```bash
 # FLAC encoding
-cat audio.raw | muxaudio-encode -c flac -r 44100 -n 2 > output.mux
+cat audio.raw | mux -c flac -r 44100 -n 2 > output.mux
 
 # Opus with custom bitrate
-muxaudio-encode -c opus -b 96 < input.raw > output.mux
+mux -c opus -b 96 < input.raw > output.mux
 
 # With side channel metadata
-muxaudio-encode -c flac < audio.raw 3< metadata.txt > output.mux
+mux -c flac < audio.raw 3< metadata.txt > output.mux
 ```
 
-### muxaudio-decode
+### demux
 
 Decode multiplexed stream from stdin to PCM audio and side channel data.
 
 ```bash
-muxaudio-decode [options] < input.mux > output.raw
+demux [options] < input.mux > output.raw
 ```
 
 **Options**:
@@ -541,13 +541,13 @@ muxaudio-decode [options] < input.mux > output.raw
 **Examples**:
 ```bash
 # Decode to PCM
-muxaudio-decode -c flac < input.mux > output.raw
+demux -c flac < input.mux > output.raw
 
 # Decode with side channel extraction
-muxaudio-decode -c opus < input.mux > audio.raw 3> metadata.txt
+demux -c opus < input.mux > audio.raw 3> metadata.txt
 
 # Verbose output
-muxaudio-decode -c flac -v < input.mux > output.raw
+demux -c flac -v < input.mux > output.raw
 ```
 
 ---
@@ -797,7 +797,7 @@ struct mux_param params[] = {
 - **Vorbis**: libogg-dev, libvorbis-dev
 - **Opus**: libogg-dev, libopus-dev
 - **FLAC**: libogg-dev, libflac-dev
-- **AAC**: libfdk-aac-dev (see [AAC_SETUP.md](AAC_SETUP.md))
+- **AAC**: libfdk-aac-dev (note: FDK-AAC has custom license restrictions)
 
 ### Build Options
 ```bash
@@ -818,7 +818,7 @@ sudo make install
 After building, check which codecs are available:
 
 ```bash
-./muxaudio-encode --help  # Lists available codecs
+./mux --help  # Lists available codecs
 ```
 
 Or programmatically:
@@ -887,7 +887,7 @@ make test
 
 GPL-3.0-or-later
 
-**Note**: AAC support uses libfdk-aac which has its own license restrictions. See [AAC_SETUP.md](AAC_SETUP.md) for details.
+**Note**: AAC support uses libfdk-aac which has its own license restrictions (not GPL).
 
 ---
 
@@ -903,6 +903,4 @@ Contributions welcome! Please ensure:
 
 ## See Also
 
-- [AAC_SETUP.md](AAC_SETUP.md) - AAC codec installation and usage
-- [tools/README.md](tools/README.md) - Command-line tools documentation
 - Example code in `tests/` directory

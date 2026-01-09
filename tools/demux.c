@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /*
- * muxaudio-decode - Decode multiplexed stream to audio and side channel data
+ * demux - Decode multiplexed stream to audio and side channel data
  *
- * Usage: muxaudio-decode [options]
+ * Usage: demux [options]
  *
  * Reads multiplexed stream from stdin, writes raw PCM audio to stdout,
  * and side channel data to fd 3.

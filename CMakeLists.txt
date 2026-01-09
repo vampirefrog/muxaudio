@@ -136,13 +136,13 @@ install(FILES include/mux.h
 )
 
 # Command-line tools
-add_executable(muxaudio-encode tools/muxaudio-encode.c)
-target_link_libraries(muxaudio-encode muxaudio)
+add_executable(mux tools/mux.c)
+target_link_libraries(mux muxaudio)
 
-add_executable(muxaudio-decode tools/muxaudio-decode.c)
-target_link_libraries(muxaudio-decode muxaudio)
+add_executable(demux tools/demux.c)
+target_link_libraries(demux muxaudio)
 
-install(TARGETS muxaudio-encode muxaudio-decode
+install(TARGETS mux demux
 	RUNTIME DESTINATION bin
 )
 
