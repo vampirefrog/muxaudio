@@ -1,0 +1,13 @@
+# Build outputs
+build/
+*.js
+*.wasm
+!muxaudio.wrapper.js
+
+# Dependencies
+deps/
+deps-build/
+
+# Temporary files
+*.log
+*.tmp

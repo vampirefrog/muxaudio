@@ -1,0 +1,87 @@
+name: Native Build (Linux)
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-native:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        config:
+          - name: "All Codecs (Both)"
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=ON -DBUILD_DECODERS=ON"
+          - name: "All Codecs (Encoder Only)"
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=ON -DBUILD_DECODERS=OFF"
+          - name: "All Codecs (Decoder Only)"
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=OFF -DBUILD_DECODERS=ON"
+          - name: "PCM + Vorbis Only"
+            cmake_flags: "-DCODEC_VORBIS=ON"
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          pkg-config \
+          libogg-dev \
+          libvorbis-dev \
+          libopus-dev \
+          libflac-dev \
+          libmpg123-dev \
+          libmp3lame-dev \
+          libfdk-aac-dev
+
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. ${{ matrix.config.cmake_flags }} -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+
+    - name: Run Tests
+      run: |
+        cd build
+        # Run available tests
+        if [ -f ./test_pcm ]; then ./test_pcm; fi
+        if [ -f ./test_errors ]; then ./test_errors; fi
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: native-linux-${{ github.sha }}-${{ matrix.config.name }}
+        path: |
+          build/libmuxaudio.so*
+          build/libmuxaudio-static.a
+          build/mux
+          build/demux
+        retention-days: 30
+
+    - name: Display Build Info
+      run: |
+        cd build
+        echo "=== Shared Library ==="
+        ls -lh libmuxaudio.so* || echo "Not built"
+        echo ""
+        echo "=== Static Library ==="
+        ls -lh libmuxaudio-static.a || echo "Not built"
+        echo ""
+        echo "=== CLI Tools ==="
+        ls -lh mux demux || echo "Not built"
+        echo ""
+        echo "=== Library Dependencies ==="
+        ldd libmuxaudio.so || echo "Not built"

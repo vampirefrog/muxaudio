@@ -1,0 +1,64 @@
+name: Test Matrix
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-build-matrix:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        codec:
+          - { name: "PCM", flags: "-DCODEC_VORBIS=OFF" }
+          - { name: "Vorbis", flags: "-DCODEC_VORBIS=ON" }
+          - { name: "Opus", flags: "-DCODEC_OPUS=ON" }
+          - { name: "FLAC", flags: "-DCODEC_FLAC=ON" }
+          - { name: "MP3", flags: "-DCODEC_MP3=ON" }
+          - { name: "All", flags: "-DBUILD_ALL_CODECS=ON" }
+        encoder_decoder:
+          - { name: "Both", enc: "ON", dec: "ON" }
+          - { name: "Encoder Only", enc: "ON", dec: "OFF" }
+          - { name: "Decoder Only", enc: "OFF", dec: "ON" }
+
+    name: ${{ matrix.codec.name }} - ${{ matrix.encoder_decoder.name }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential cmake pkg-config \
+          libogg-dev libvorbis-dev libopus-dev \
+          libflac-dev libmpg123-dev libmp3lame-dev
+
+    - name: Configure
+      run: |
+        mkdir build
+        cd build
+        cmake .. \
+          ${{ matrix.codec.flags }} \
+          -DBUILD_ENCODERS=${{ matrix.encoder_decoder.enc }} \
+          -DBUILD_DECODERS=${{ matrix.encoder_decoder.dec }} \
+          -DCMAKE_BUILD_TYPE=Debug
+
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+
+    - name: Check Build Output
+      run: |
+        cd build
+        echo "=== Build completed successfully ==="
+        ls -lh libmuxaudio.so* libmuxaudio-static.a 2>/dev/null || true
+        echo ""
+        echo "=== Symbols Check ==="
+        nm libmuxaudio.so | grep -E "mux_encoder|mux_decoder" | head -10 || echo "No encoder/decoder symbols found"

@@ -1,0 +1,95 @@
+name: WASM Build
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        config:
+          - name: "All Codecs (Decoder Only)"
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=OFF -DBUILD_DECODERS=ON"
+            codecs: "PCM, Vorbis, Opus, FLAC, MP3"
+          - name: "Vorbis + Opus (Decoder)"
+            cmake_flags: "-DCODEC_VORBIS=ON -DCODEC_OPUS=ON -DBUILD_DECODERS=ON -DBUILD_ENCODERS=OFF"
+            codecs: "PCM, Vorbis, Opus"
+          - name: "PCM Only"
+            cmake_flags: "-DCODEC_VORBIS=OFF -DCODEC_OPUS=OFF -DCODEC_FLAC=OFF -DCODEC_MP3=OFF"
+            codecs: "PCM"
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+        actions-cache-folder: 'emsdk-cache'
+
+    - name: Verify Emscripten
+      run: |
+        emcc --version
+        which emcmake
+
+    - name: Configure CMake
+      run: |
+        cd wasm
+        mkdir -p build
+        cd build
+        emcmake cmake ../.. ${{ matrix.config.cmake_flags }} -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: |
+        cd wasm/build
+        make -j$(nproc) VERBOSE=1
+
+    - name: Display Build Info
+      run: |
+        cd wasm/build
+        echo "=== WASM Module ==="
+        ls -lh muxaudio.wasm muxaudio.js
+        echo ""
+        echo "=== WASM Size ==="
+        du -h muxaudio.wasm
+        echo ""
+        echo "=== Static Library ==="
+        ls -lh libmuxaudio-static.a || echo "Not built"
+        echo ""
+        echo "=== Codecs Included ==="
+        echo "${{ matrix.config.codecs }}"
+
+    - name: Upload WASM Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm-${{ github.sha }}-${{ matrix.config.name }}
+        path: |
+          wasm/build/muxaudio.js
+          wasm/build/muxaudio.wasm
+          wasm/build/libmuxaudio-static.a
+          wasm/muxaudio.wrapper.js
+        retention-days: 30
+
+    - name: Create Distribution Package
+      run: |
+        cd wasm
+        mkdir -p dist
+        cp build/muxaudio.js build/muxaudio.wasm muxaudio.wrapper.js dist/
+        echo "Module size: $(du -h build/muxaudio.wasm | cut -f1)"
+        echo "Codecs: ${{ matrix.config.codecs }}" > dist/BUILD_INFO.txt
+        echo "Commit: ${{ github.sha }}" >> dist/BUILD_INFO.txt
+        echo "Date: $(date -u)" >> dist/BUILD_INFO.txt
+
+    - name: Upload Distribution Package
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm-dist-${{ matrix.config.name }}
+        path: wasm/dist/*
+        retention-days: 90

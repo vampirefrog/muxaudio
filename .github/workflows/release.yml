@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name for release'
+        required: true
+        default: 'v0.1.0'
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # ================== Native Build ==================
+    - name: Install Native Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          pkg-config \
+          libogg-dev \
+          libvorbis-dev \
+          libopus-dev \
+          libflac-dev \
+          libmpg123-dev \
+          libmp3lame-dev \
+          libfdk-aac-dev
+
+    - name: Build Native (All Codecs)
+      run: |
+        mkdir build-native
+        cd build-native
+        cmake .. \
+          -DBUILD_ALL_CODECS=ON \
+          -DBUILD_ENCODERS=ON \
+          -DBUILD_DECODERS=ON \
+          -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+
+    - name: Package Native Build
+      run: |
+        cd build-native
+        mkdir -p ../release/native-linux-x64
+        cp libmuxaudio.so* libmuxaudio-static.a mux demux ../release/native-linux-x64/
+        cd ../release
+        tar czf muxaudio-native-linux-x64.tar.gz native-linux-x64/
+
+    # ================== WASM Build ==================
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+
+    - name: Build WASM (Decoder Only - All Codecs)
+      run: |
+        cd wasm
+        mkdir -p build
+        cd build
+        emcmake cmake ../.. \
+          -DBUILD_ALL_CODECS=ON \
+          -DBUILD_ENCODERS=OFF \
+          -DBUILD_DECODERS=ON \
+          -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+
+    - name: Package WASM Build
+      run: |
+        mkdir -p release/wasm-decoder
+        cp wasm/build/muxaudio.js release/wasm-decoder/
+        cp wasm/build/muxaudio.wasm release/wasm-decoder/
+        cp wasm/muxaudio.wrapper.js release/wasm-decoder/
+        cp wasm/test.html release/wasm-decoder/
+
+        # Create build info
+        cat > release/wasm-decoder/BUILD_INFO.txt << EOF
+        MuxAudio WASM Build
+        ===================
+        Version: ${GITHUB_REF_NAME}
+        Commit: ${GITHUB_SHA}
+        Date: $(date -u)
+
+        Configuration:
+        - Codecs: PCM, Vorbis, Opus, FLAC, MP3 (decode only)
+        - Encoders: Disabled
+        - Decoders: Enabled
+
+        Module Size: $(du -h wasm/build/muxaudio.wasm | cut -f1)
+        EOF
+
+        cd release
+        tar czf muxaudio-wasm-decoder.tar.gz wasm-decoder/
+
+    # ================== Create Release ==================
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name || github.event.inputs.tag }}
+        release_name: Release ${{ github.ref_name || github.event.inputs.tag }}
+        body: |
+          ## MuxAudio Release ${{ github.ref_name || github.event.inputs.tag }}
+
+          ### Native Linux Build
+          - Shared library: `libmuxaudio.so`
+          - Static library: `libmuxaudio-static.a`
+          - CLI tools: `mux`, `demux`
+          - All codecs enabled (PCM, Vorbis, Opus, FLAC, MP3, AAC)
+
+          ### WASM Build
+          - Decoder-only build for browser use
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3
+          - Files: `muxaudio.js`, `muxaudio.wasm`, `muxaudio.wrapper.js`
+
+          ### Installation
+
+          **Native (Linux):**
+          ```bash
+          tar xzf muxaudio-native-linux-x64.tar.gz
+          sudo cp native-linux-x64/libmuxaudio.so* /usr/local/lib/
+          sudo cp native-linux-x64/mux native-linux-x64/demux /usr/local/bin/
+          sudo ldconfig
+          ```
+
+          **WASM:**
+          ```bash
+          tar xzf muxaudio-wasm-decoder.tar.gz
+          # Use files in wasm-decoder/ in your web project
+          ```
+        draft: false
+        prerelease: false
+
+    - name: Upload Native Build
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release/muxaudio-native-linux-x64.tar.gz
+        asset_name: muxaudio-native-linux-x64.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload WASM Build
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release/muxaudio-wasm-decoder.tar.gz
+        asset_name: muxaudio-wasm-decoder.tar.gz
+        asset_content_type: application/gzip
