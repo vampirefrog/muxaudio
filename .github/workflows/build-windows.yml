@@ -56,6 +56,17 @@ jobs:
         cd build
         cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
 
+    - name: Copy Codec DLLs
+      run: |
+        $vcpkgBin = "$env:VCPKG_ROOT/installed/x64-windows/bin"
+        Copy-Item "$vcpkgBin/ogg.dll" build/Release/ -ErrorAction SilentlyContinue
+        Copy-Item "$vcpkgBin/vorbis.dll" build/Release/ -ErrorAction SilentlyContinue
+        Copy-Item "$vcpkgBin/vorbisenc.dll" build/Release/ -ErrorAction SilentlyContinue
+        Copy-Item "$vcpkgBin/opus.dll" build/Release/ -ErrorAction SilentlyContinue
+        Copy-Item "$vcpkgBin/FLAC.dll" build/Release/ -ErrorAction SilentlyContinue
+        Copy-Item "$vcpkgBin/mpg123.dll" build/Release/ -ErrorAction SilentlyContinue
+        Copy-Item "$vcpkgBin/fdk-aac-2.dll" build/Release/ -ErrorAction SilentlyContinue
+
     - name: Run Tests
       run: |
         cd build/Release
