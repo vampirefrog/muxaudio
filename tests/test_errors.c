@@ -46,10 +46,10 @@ int main(void)
 	}
 
 	/*
-	 * Test 2: MP3 encoder success - should have no error
+	 * Test 2: PCM encoder success - should have no error
 	 */
-	printf("\nTest 2: Creating valid MP3 encoder...\n");
-	enc = mux_encoder_new(MUX_CODEC_MP3, 44100, 2, NULL, 0);
+	printf("\nTest 2: Creating valid PCM encoder...\n");
+	enc = mux_encoder_new(MUX_CODEC_PCM, 44100, 2, NULL, 0);
 	if (!enc) {
 		printf("✗ Failed to create encoder\n");
 		return 1;
@@ -67,10 +67,10 @@ int main(void)
 	mux_encoder_destroy(enc);
 
 	/*
-	 * Test 3: MP3 decoder  success - should have no error
+	 * Test 3: PCM decoder success - should have no error
 	 */
-	printf("\nTest 3: Creating valid MP3 decoder...\n");
-	dec = mux_decoder_new(MUX_CODEC_MP3, NULL, 0);
+	printf("\nTest 3: Creating valid PCM decoder...\n");
+	dec = mux_decoder_new(MUX_CODEC_PCM, NULL, 0);
 	if (!dec) {
 		printf("✗ Failed to create decoder\n");
 		return 1;
