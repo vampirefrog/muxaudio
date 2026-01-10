@@ -90,6 +90,7 @@ static const struct mux_param_desc mp3_encoder_params[] = {
 };
 #endif
 
+#ifdef HAVE_MP3_ENCODE
 /*
  * Helper to find parameter value by name
  */
@@ -105,6 +106,7 @@ static const struct mux_param *find_param(const struct mux_param *params,
 	}
 	return NULL;
 }
+#endif /* HAVE_MP3_ENCODE */
 
 #ifdef HAVE_MP3_ENCODE
 /*

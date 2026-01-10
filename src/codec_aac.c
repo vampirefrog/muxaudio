@@ -532,11 +532,12 @@ static int mux_aac_decoder_decode(struct mux_decoder *dec,
 
 		/* Audio data: decode with AAC */
 		uint8_t *input_ptr = frame_buf;
-		UINT bytes_valid = frame_size;
+		UINT buffer_size = (UINT)frame_size;
+		UINT bytes_valid = buffer_size;
 
 		/* Fill decoder with compressed data */
 		AAC_DECODER_ERROR err = aacDecoder_Fill(data->dec, &input_ptr,
-							&frame_size, &bytes_valid);
+							&buffer_size, &bytes_valid);
 		if (err != AAC_DEC_OK) {
 			mux_decoder_set_error(dec, MUX_ERROR_FORMAT,
 					      "AAC decoder fill failed",
