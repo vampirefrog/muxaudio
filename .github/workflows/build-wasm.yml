@@ -41,19 +41,18 @@ jobs:
 
     - name: Configure CMake
       run: |
-        cd wasm
         mkdir -p build
         cd build
-        emcmake cmake ../.. ${{ matrix.config.cmake_flags }} -DCMAKE_BUILD_TYPE=Release
+        emcmake cmake .. ${{ matrix.config.cmake_flags }} -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: |
-        cd wasm/build
+        cd build
         make -j$(nproc) VERBOSE=1
 
     - name: Display Build Info
       run: |
-        cd wasm/build
+        cd build
         echo "=== WASM Module ==="
         ls -lh muxaudio.wasm muxaudio.js
         echo ""
@@ -71,25 +70,24 @@ jobs:
       with:
         name: wasm-${{ github.sha }}-${{ matrix.config.name }}
         path: |
-          wasm/build/muxaudio.js
-          wasm/build/muxaudio.wasm
-          wasm/build/libmuxaudio-static.a
+          build/muxaudio.js
+          build/muxaudio.wasm
+          build/libmuxaudio-static.a
           wasm/muxaudio.wrapper.js
         retention-days: 30
 
     - name: Create Distribution Package
       run: |
-        cd wasm
-        mkdir -p dist
-        cp build/muxaudio.js build/muxaudio.wasm muxaudio.wrapper.js dist/
+        mkdir -p wasm-dist
+        cp build/muxaudio.js build/muxaudio.wasm wasm/muxaudio.wrapper.js wasm-dist/
         echo "Module size: $(du -h build/muxaudio.wasm | cut -f1)"
-        echo "Codecs: ${{ matrix.config.codecs }}" > dist/BUILD_INFO.txt
-        echo "Commit: ${{ github.sha }}" >> dist/BUILD_INFO.txt
-        echo "Date: $(date -u)" >> dist/BUILD_INFO.txt
+        echo "Codecs: ${{ matrix.config.codecs }}" > wasm-dist/BUILD_INFO.txt
+        echo "Commit: ${{ github.sha }}" >> wasm-dist/BUILD_INFO.txt
+        echo "Date: $(date -u)" >> wasm-dist/BUILD_INFO.txt
 
     - name: Upload Distribution Package
       uses: actions/upload-artifact@v4
       with:
         name: wasm-dist-${{ matrix.config.name }}
-        path: wasm/dist/*
+        path: wasm-dist/*
         retention-days: 90
