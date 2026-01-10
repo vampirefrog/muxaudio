@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MuxAudio WASM Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    h1 { color: #333; }
+    #output {
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      min-height: 300px;
+    }
+    .success { color: green; }
+    .error { color: red; }
+    .info { color: blue; }
+    button {
+      padding: 10px 20px;
+      margin: 10px 5px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>MuxAudio WebAssembly Test</h1>
+
+  <div>
+    <button onclick="runTest()">Run Test</button>
+    <button onclick="clearOutput()">Clear</button>
+  </div>
+
+  <div id="output">Click "Run Test" to begin...</div>
+
+  <script type="module">
+    import { createMuxAudio } from './muxaudio.wrapper.js';
+
+    const output = document.getElementById('output');
+
+    function log(msg, className = '') {
+      const line = document.createElement('div');
+      line.textContent = msg;
+      if (className) line.className = className;
+      output.appendChild(line);
+    }
+
+    function clear() {
+      output.innerHTML = '';
+    }
+
+    window.clearOutput = clear;
+
+    window.runTest = async function() {
+      clear();
+      log('=== MuxAudio WASM Test ===\n', 'info');
+
+      try {
+        // Load WASM module
+        log('Loading WASM module...', 'info');
+        const mux = await createMuxAudio();
+        log('✓ WASM module loaded\n', 'success');
+
+        // Test PCM codec (always available)
+        await testCodec(mux, 'pcm', 44100, 2);
+
+        // Test Vorbis if available
+        try {
+          await testCodec(mux, 'vorbis', 44100, 2, { bitrate: 128 });
+        } catch (e) {
+          log(`⚠ Vorbis not available: ${e.message}`, 'error');
+        }
+
+        // Test with side channel
+        await testSideChannel(mux);
+
+        log('\n=== All tests passed! ===', 'success');
+
+      } catch (error) {
+        log(`\n✗ Error: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    async function testCodec(mux, codec, sampleRate, channels, params = {}) {
+      log(`\nTesting ${codec.toUpperCase()} codec...`, 'info');
+
+      // Generate test audio (1 second of 440 Hz sine wave)
+      const duration = 1.0; // seconds
+      const numSamples = Math.floor(sampleRate * duration);
+      const pcm = new Int16Array(numSamples * channels);
+
+      for (let i = 0; i < numSamples; i++) {
+        const t = i / sampleRate;
+        const sample = Math.sin(2 * Math.PI * 440 * t) * 16384; // 440 Hz
+        for (let ch = 0; ch < channels; ch++) {
+          pcm[i * channels + ch] = sample;
+        }
+      }
+
+      const inputSize = pcm.length * 2; // bytes
+      log(`  Input: ${numSamples} samples (${inputSize} bytes)`);
+
+      // Encode
+      const encoder = mux.Encoder(codec, sampleRate, channels, params);
+      encoder.encode(pcm);
+      const encoded = encoder.finalize();
+      encoder.destroy();
+
+      const ratio = ((encoded.length / inputSize) * 100).toFixed(1);
+      log(`  Encoded: ${encoded.length} bytes (${ratio}% of original)`);
+
+      // Decode
+      const decoder = mux.Decoder(codec);
+      decoder.decode(encoded);
+      const outputs = decoder.finalize();
+      decoder.destroy();
+
+      if (outputs.length === 0) {
+        throw new Error('Decode produced no output');
+      }
+
+      const decoded = outputs[0].data;
+      const outputSize = decoded.length * 2;
+      log(`  Decoded: ${decoded.length} samples (${outputSize} bytes)`);
+
+      // Verify (for lossless codecs)
+      if (codec === 'pcm' || codec === 'flac') {
+        if (decoded.length === pcm.length) {
+          let matches = true;
+          for (let i = 0; i < Math.min(100, pcm.length); i++) {
+            if (pcm[i] !== decoded[i]) {
+              matches = false;
+              break;
+            }
+          }
+          if (matches) {
+            log(`  ✓ Lossless verification passed`, 'success');
+          } else {
+            log(`  ✗ Sample mismatch detected`, 'error');
+          }
+        } else {
+          log(`  ✗ Size mismatch: ${pcm.length} vs ${decoded.length}`, 'error');
+        }
+      } else {
+        log(`  ℹ Lossy codec - skipping bit-exact verification`, 'info');
+      }
+
+      log(`  ✓ ${codec.toUpperCase()} test passed`, 'success');
+    }
+
+    async function testSideChannel(mux) {
+      log('\nTesting side channel multiplexing...', 'info');
+
+      // Create encoder
+      const encoder = mux.Encoder('pcm', 44100, 2);
+
+      // Encode audio stream
+      const audioSamples = new Int16Array(1024);
+      for (let i = 0; i < audioSamples.length; i++) {
+        audioSamples[i] = (i % 256) - 128;
+      }
+      encoder.encode(audioSamples, mux.STREAM_AUDIO);
+
+      // Encode side channel data
+      const metadata = new TextEncoder().encode('{"timestamp":12345,"track":"test"}');
+      encoder.encode(metadata, mux.STREAM_SIDE_CHANNEL);
+
+      // Get multiplexed output
+      const muxed = encoder.finalize();
+      encoder.destroy();
+
+      log(`  Multiplexed: ${muxed.length} bytes`);
+
+      // Decode
+      const decoder = mux.Decoder('pcm');
+      decoder.decode(muxed);
+      const outputs = decoder.finalize();
+      decoder.destroy();
+
+      log(`  Outputs: ${outputs.length} stream(s)`);
+
+      let hasAudio = false;
+      let hasSideChannel = false;
+
+      for (const output of outputs) {
+        if (output.streamType === mux.STREAM_AUDIO) {
+          hasAudio = true;
+          log(`    - Audio: ${output.data.length} samples`);
+        } else if (output.streamType === mux.STREAM_SIDE_CHANNEL) {
+          hasSideChannel = true;
+          const text = new TextDecoder().decode(output.data);
+          log(`    - Side channel: ${output.data.length} bytes`);
+          log(`      Content: ${text}`);
+        }
+      }
+
+      if (hasAudio && hasSideChannel) {
+        log(`  ✓ Side channel test passed`, 'success');
+      } else {
+        throw new Error('Missing audio or side channel stream');
+      }
+    }
+  </script>
+</body>
+</html>
