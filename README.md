@@ -1,3 +1,8 @@
+[![Native Build](https://github.com/vampirefrog/muxaudio/actions/workflows/build-native.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/build-native.yml)
+[![WASM Build](https://github.com/vampirefrog/muxaudio/actions/workflows/build-wasm.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/build-wasm.yml)
+[![Test Matrix](https://github.com/vampirefrog/muxaudio/actions/workflows/test-matrix.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/test-matrix.yml)
+[![Release](https://github.com/vampirefrog/muxaudio/actions/workflows/release.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/release.yml)
+
 # muxaudio
 
 A lightweight, efficient audio codec multiplexing library with support for multiple formats and side channel data.
