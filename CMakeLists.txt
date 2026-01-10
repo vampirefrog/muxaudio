@@ -50,7 +50,13 @@ if(IS_WASM)
 endif()
 
 # Compiler flags
-if(NOT MSVC AND NOT IS_WASM)
+if(IS_WASM)
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wno-unused-parameter
+    )
+elseif(NOT MSVC)
     add_compile_options(
         -Wall
         -Wextra
@@ -58,12 +64,6 @@ if(NOT MSVC AND NOT IS_WASM)
         -Wno-unused-parameter
         -Wstrict-prototypes
         -Wmissing-prototypes
-    )
-elseif(IS_WASM)
-    add_compile_options(
-        -Wall
-        -Wextra
-        -Wno-unused-parameter
     )
 endif()
 
