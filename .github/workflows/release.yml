@@ -62,10 +62,9 @@ jobs:
 
     - name: Build WASM (Decoder Only - All Codecs)
       run: |
-        cd wasm
-        mkdir -p build
-        cd build
-        emcmake cmake ../.. \
+        mkdir -p build-wasm
+        cd build-wasm
+        emcmake cmake .. \
           -DBUILD_ALL_CODECS=ON \
           -DBUILD_ENCODERS=OFF \
           -DBUILD_DECODERS=ON \
@@ -75,10 +74,10 @@ jobs:
     - name: Package WASM Build
       run: |
         mkdir -p release/wasm-decoder
-        cp wasm/build/muxaudio.js release/wasm-decoder/
-        cp wasm/build/muxaudio.wasm release/wasm-decoder/
+        cp build-wasm/muxaudio.js release/wasm-decoder/
+        cp build-wasm/muxaudio.wasm release/wasm-decoder/
         cp wasm/muxaudio.wrapper.js release/wasm-decoder/
-        cp wasm/test.html release/wasm-decoder/
+        [ -f wasm/test.html ] && cp wasm/test.html release/wasm-decoder/ || true
 
         # Create build info
         cat > release/wasm-decoder/BUILD_INFO.txt << EOF
@@ -93,7 +92,7 @@ jobs:
         - Encoders: Disabled
         - Decoders: Enabled
 
-        Module Size: $(du -h wasm/build/muxaudio.wasm | cut -f1)
+        Module Size: $(du -h build-wasm/muxaudio.wasm | cut -f1)
         EOF
 
         cd release
