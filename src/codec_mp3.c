@@ -4,9 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <lame/lame.h>
-#include <mpg123.h>
 
+#ifdef HAVE_MP3_ENCODE
+#include <lame/lame.h>
+#endif
+
+#ifdef HAVE_MP3_DECODE
+#include <mpg123.h>
+#endif
+
+#ifdef HAVE_MP3_ENCODE
 /*
  * LAME error code translation
  */
@@ -27,13 +34,17 @@ static const char *lame_encode_error_string(int lame_ret)
 		return NULL;
 	}
 }
+#endif
 
+#ifdef HAVE_MP3_DECODE
 static const char *mpg123_error_string(mpg123_handle *mh)
 {
 	const char *err = mpg123_plain_strerror(mpg123_errcode(mh));
 	return err ? err : "unknown mpg123 error";
 }
+#endif
 
+#ifdef HAVE_MP3_ENCODE
 /*
  * MP3 encoder state
  */
@@ -41,7 +52,9 @@ struct mp3_encoder_data {
 	lame_global_flags *gfp;
 	uint8_t mp3_buffer[8192];  /* Buffer for encoded MP3 frames */
 };
+#endif
 
+#ifdef HAVE_MP3_DECODE
 /*
  * MP3 decoder state
  */
@@ -49,7 +62,9 @@ struct mp3_decoder_data {
 	mpg123_handle *mh;  /* mpg123 decoder handle */
 	struct mux_buffer input_buf;  /* Buffer for muxed input */
 };
+#endif
 
+#ifdef HAVE_MP3_ENCODE
 /*
  * MP3 encoder parameters
  */
@@ -73,6 +88,7 @@ static const struct mux_param_desc mp3_encoder_params[] = {
 		.range.b = { .def = 0 }
 	}
 };
+#endif
 
 /*
  * Helper to find parameter value by name
@@ -90,6 +106,7 @@ static const struct mux_param *find_param(const struct mux_param *params,
 	return NULL;
 }
 
+#ifdef HAVE_MP3_ENCODE
 /*
  * MP3 encoder initialization
  */
@@ -320,7 +337,9 @@ static int mp3_encoder_finalize(struct mux_encoder *enc)
 
 	return MUX_OK;
 }
+#endif /* HAVE_MP3_ENCODE */
 
+#ifdef HAVE_MP3_DECODE
 /*
  * MP3 decoder initialization
  */
@@ -620,6 +639,7 @@ static int mp3_decoder_finalize(struct mux_decoder *dec)
 
 	return MUX_OK;
 }
+#endif /* HAVE_MP3_DECODE */
 
 /*
  * MP3 sample rate constraints (MPEG-1 and MPEG-2 supported rates)
@@ -632,20 +652,38 @@ static const int mp3_sample_rates[] = {
  * MP3 codec operations
  */
 const struct mux_codec_ops mux_codec_mp3_ops = {
+#ifdef HAVE_MP3_ENCODE
 	.encoder_init = mp3_encoder_init,
 	.encoder_deinit = mp3_encoder_deinit,
 	.encoder_encode = mp3_encoder_encode,
 	.encoder_read = mp3_encoder_read,
 	.encoder_finalize = mp3_encoder_finalize,
+	.encoder_params = mp3_encoder_params,
+	.encoder_param_count = sizeof(mp3_encoder_params) / sizeof(mp3_encoder_params[0]),
+#else
+	.encoder_init = NULL,
+	.encoder_deinit = NULL,
+	.encoder_encode = NULL,
+	.encoder_read = NULL,
+	.encoder_finalize = NULL,
+	.encoder_params = NULL,
+	.encoder_param_count = 0,
+#endif
 
+#ifdef HAVE_MP3_DECODE
 	.decoder_init = mp3_decoder_init,
 	.decoder_deinit = mp3_decoder_deinit,
 	.decoder_decode = mp3_decoder_decode,
 	.decoder_read = mp3_decoder_read,
 	.decoder_finalize = mp3_decoder_finalize,
+#else
+	.decoder_init = NULL,
+	.decoder_deinit = NULL,
+	.decoder_decode = NULL,
+	.decoder_read = NULL,
+	.decoder_finalize = NULL,
+#endif
 
-	.encoder_params = mp3_encoder_params,
-	.encoder_param_count = sizeof(mp3_encoder_params) / sizeof(mp3_encoder_params[0]),
 	.decoder_params = NULL,
 	.decoder_param_count = 0,
 
