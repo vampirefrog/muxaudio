@@ -15,15 +15,14 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
+  build-linux:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # ================== Native Build ==================
-    - name: Install Native Dependencies
+    - name: Install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -38,10 +37,10 @@ jobs:
           libmp3lame-dev \
           libfdk-aac-dev
 
-    - name: Build Native (All Codecs)
+    - name: Build (All Codecs)
       run: |
-        mkdir build-native
-        cd build-native
+        mkdir build
+        cd build
         cmake .. \
           -DBUILD_ALL_CODECS=ON \
           -DBUILD_ENCODERS=ON \
@@ -49,15 +48,89 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
         make -j$(nproc)
 
-    - name: Package Native Build
+    - name: Package
       run: |
-        cd build-native
-        mkdir -p ../release/native-linux-x64
-        cp libmuxaudio.so* libmuxaudio-static.a mux demux ../release/native-linux-x64/
-        cd ../release
+        mkdir -p release/native-linux-x64
+        cp build/libmuxaudio.so* build/libmuxaudio-static.a build/mux build/demux release/native-linux-x64/
+        cd release
         tar czf muxaudio-native-linux-x64.tar.gz native-linux-x64/
 
-    # ================== WASM Build ==================
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-release
+        path: release/muxaudio-native-linux-x64.tar.gz
+        retention-days: 1
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+
+    - name: Install Dependencies
+      run: |
+        vcpkg install libogg:x64-windows
+        vcpkg install libvorbis:x64-windows
+        vcpkg install opus:x64-windows
+        vcpkg install libflac:x64-windows
+        vcpkg install mpg123:x64-windows
+        vcpkg install fdk-aac:x64-windows
+
+    - name: Build (All Codecs)
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DBUILD_ALL_CODECS=ON `
+          -DBUILD_ENCODERS=ON `
+          -DBUILD_DECODERS=ON `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake `
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+        cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+
+    - name: Package
+      run: |
+        mkdir -p release/windows-x64
+
+        # Copy muxaudio binaries
+        Copy-Item build/Release/*.dll release/windows-x64/
+        Copy-Item build/Release/*.lib release/windows-x64/
+        Copy-Item build/Release/*.exe release/windows-x64/
+
+        # Copy codec DLLs from vcpkg
+        $vcpkgBin = "$env:VCPKG_ROOT/installed/x64-windows/bin"
+        Copy-Item "$vcpkgBin/ogg.dll" release/windows-x64/
+        Copy-Item "$vcpkgBin/vorbis.dll" release/windows-x64/
+        Copy-Item "$vcpkgBin/vorbisenc.dll" release/windows-x64/
+        Copy-Item "$vcpkgBin/opus.dll" release/windows-x64/
+        Copy-Item "$vcpkgBin/FLAC.dll" release/windows-x64/
+        Copy-Item "$vcpkgBin/mpg123.dll" release/windows-x64/
+        Copy-Item "$vcpkgBin/fdk-aac-2.dll" release/windows-x64/
+
+        cd release
+        Compress-Archive -Path windows-x64 -DestinationPath muxaudio-windows-x64.zip
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-release
+        path: release/muxaudio-windows-x64.zip
+        retention-days: 1
+
+  build-wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
     - name: Setup Emscripten
       uses: mymindstorm/setup-emsdk@v14
       with:
@@ -65,8 +138,8 @@ jobs:
 
     - name: Build WASM (Decoder Only - All Codecs)
       run: |
-        mkdir -p build-wasm
-        cd build-wasm
+        mkdir build
+        cd build
         emcmake cmake .. \
           -DBUILD_ALL_CODECS=ON \
           -DBUILD_ENCODERS=OFF \
@@ -74,11 +147,11 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
         make -j$(nproc)
 
-    - name: Package WASM Build
+    - name: Package
       run: |
         mkdir -p release/wasm-decoder
-        cp build-wasm/muxaudio.js release/wasm-decoder/
-        cp build-wasm/muxaudio.wasm release/wasm-decoder/
+        cp build/muxaudio.js release/wasm-decoder/
+        cp build/muxaudio.wasm release/wasm-decoder/
         cp wasm/muxaudio.wrapper.js release/wasm-decoder/
         [ -f wasm/test.html ] && cp wasm/test.html release/wasm-decoder/ || true
 
@@ -95,13 +168,42 @@ jobs:
         - Encoders: Disabled
         - Decoders: Enabled
 
-        Module Size: $(du -h build-wasm/muxaudio.wasm | cut -f1)
+        Module Size: $(du -h build/muxaudio.wasm | cut -f1)
         EOF
 
         cd release
         tar czf muxaudio-wasm-decoder.tar.gz wasm-decoder/
 
-    # ================== Create Release ==================
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasm-release
+        path: release/muxaudio-wasm-decoder.tar.gz
+        retention-days: 1
+
+  create-release:
+    needs: [build-linux, build-windows, build-wasm]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: linux-release
+        path: release
+
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-release
+        path: release
+
+    - name: Download WASM Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: wasm-release
+        path: release
+
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
@@ -116,6 +218,13 @@ jobs:
           - CLI tools: `mux`, `demux`
           - All codecs enabled (PCM, Vorbis, Opus, FLAC, MP3, AAC)
 
+          ### Windows Build
+          - DLL: `muxaudio.dll`
+          - Import library: `muxaudio.lib`
+          - Static library: `muxaudio-static.lib`
+          - CLI tools: `mux.exe`, `demux.exe`
+          - All codecs enabled (PCM, Vorbis, Opus, FLAC, MP3, AAC)
+
           ### WASM Build
           - Decoder-only build for browser use
           - Codecs: PCM, Vorbis, Opus, FLAC, MP3
@@ -123,12 +232,18 @@ jobs:
 
           ### Installation
 
-          **Native (Linux):**
+          **Linux:**
           ```bash
           tar xzf muxaudio-native-linux-x64.tar.gz
           sudo cp native-linux-x64/libmuxaudio.so* /usr/local/lib/
           sudo cp native-linux-x64/mux native-linux-x64/demux /usr/local/bin/
           sudo ldconfig
+          ```
+
+          **Windows:**
+          ```powershell
+          Expand-Archive muxaudio-windows-x64.zip
+          # Copy DLL and EXE files to your project or system PATH
           ```
 
           **WASM:**
@@ -140,4 +255,5 @@ jobs:
         prerelease: false
         files: |
           release/muxaudio-native-linux-x64.tar.gz
+          release/muxaudio-windows-x64.zip
           release/muxaudio-wasm-decoder.tar.gz
