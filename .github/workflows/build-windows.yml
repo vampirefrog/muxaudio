@@ -1,0 +1,89 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        config:
+          - name: "All Codecs (Both)"
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=ON -DBUILD_DECODERS=ON"
+            codecs: "PCM, Vorbis, Opus, FLAC, MP3, AAC"
+          - name: "All Codecs (Decoder Only)"
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=OFF -DBUILD_DECODERS=ON"
+            codecs: "PCM, Vorbis, Opus, FLAC, MP3 (decode only)"
+          - name: "PCM + Vorbis Only"
+            cmake_flags: "-DCODEC_VORBIS=ON -DCODEC_OPUS=OFF -DCODEC_FLAC=OFF -DCODEC_MP3=OFF -DCODEC_AAC=OFF"
+            codecs: "PCM, Vorbis"
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+
+    - name: Install Dependencies
+      run: |
+        vcpkg install libogg:x64-windows
+        vcpkg install libvorbis:x64-windows
+        vcpkg install opus:x64-windows
+        vcpkg install libflac:x64-windows
+        vcpkg install mpg123:x64-windows
+        vcpkg install fdk-aac:x64-windows
+
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. ${{ matrix.config.cmake_flags }} `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake `
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+
+    - name: Run Tests
+      run: |
+        cd build/Release
+        if (Test-Path test_errors.exe) {
+          ./test_errors.exe
+        }
+
+    - name: Display Build Info
+      run: |
+        cd build/Release
+        echo "=== DLL Files ==="
+        Get-ChildItem *.dll | Format-Table Name, Length
+        echo ""
+        echo "=== LIB Files ==="
+        Get-ChildItem *.lib | Format-Table Name, Length
+        echo ""
+        echo "=== Executables ==="
+        Get-ChildItem *.exe | Format-Table Name, Length
+        echo ""
+        echo "=== Codecs Included ==="
+        echo "${{ matrix.config.codecs }}"
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-x64-${{ matrix.config.name }}
+        path: |
+          build/Release/*.dll
+          build/Release/*.lib
+          build/Release/*.exe
+        retention-days: 30
