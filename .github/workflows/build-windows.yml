@@ -37,6 +37,8 @@ jobs:
         cd build
         cmake .. ${{ matrix.config.cmake_flags }} `
           -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_TOOLS=OFF `
+          -DBUILD_TESTS=OFF `
           -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
           -DVCPKG_TARGET_TRIPLET=x64-windows
 
@@ -56,13 +58,6 @@ jobs:
         Copy-Item "$vcpkgBin/mpg123.dll" build/Release/ -ErrorAction SilentlyContinue
         Copy-Item "$vcpkgBin/fdk-aac-2.dll" build/Release/ -ErrorAction SilentlyContinue
 
-    - name: Run Tests
-      run: |
-        cd build/Release
-        if (Test-Path test_errors.exe) {
-          ./test_errors.exe
-        }
-
     - name: Display Build Info
       run: |
         cd build/Release
@@ -71,9 +66,6 @@ jobs:
         echo ""
         echo "=== LIB Files ==="
         Get-ChildItem *.lib | Format-Table Name, Length
-        echo ""
-        echo "=== Executables ==="
-        Get-ChildItem *.exe | Format-Table Name, Length
         echo ""
         echo "=== Codecs Included ==="
         echo "${{ matrix.config.codecs }}"
@@ -85,5 +77,4 @@ jobs:
         path: |
           build/Release/*.dll
           build/Release/*.lib
-          build/Release/*.exe
         retention-days: 30

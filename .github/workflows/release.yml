@@ -79,6 +79,8 @@ jobs:
         cmake .. -DBUILD_ALL_CODECS=ON `
           -DBUILD_ENCODERS=ON `
           -DBUILD_DECODERS=ON `
+          -DBUILD_TOOLS=OFF `
+          -DBUILD_TESTS=OFF `
           -DCMAKE_BUILD_TYPE=Release `
           -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
           -DVCPKG_TARGET_TRIPLET=x64-windows
@@ -91,7 +93,6 @@ jobs:
         # Copy muxaudio binaries
         Copy-Item build/Release/*.dll release/windows-x64/
         Copy-Item build/Release/*.lib release/windows-x64/
-        Copy-Item build/Release/*.exe release/windows-x64/
 
         # Copy codec DLLs from vcpkg
         $vcpkgBin = "$env:VCPKG_ROOT/installed/x64-windows/bin"
@@ -211,8 +212,8 @@ jobs:
           - DLL: `muxaudio.dll`
           - Import library: `muxaudio.lib`
           - Static library: `muxaudio-static.lib`
-          - CLI tools: `mux.exe`, `demux.exe`
           - All codecs enabled (PCM, Vorbis, Opus, FLAC, MP3, AAC)
+          - Includes all codec DLLs (ogg.dll, vorbis.dll, opus.dll, etc.)
 
           ### WASM Build
           - Decoder-only build for browser use
