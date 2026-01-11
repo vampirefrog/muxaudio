@@ -80,7 +80,7 @@ jobs:
           -DBUILD_ENCODERS=ON `
           -DBUILD_DECODERS=ON `
           -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake `
+          -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
           -DVCPKG_TARGET_TRIPLET=x64-windows
         cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
 
