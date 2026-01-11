@@ -1,4 +1,5 @@
 [![Native Build](https://github.com/vampirefrog/muxaudio/actions/workflows/build-native.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/build-native.yml)
+[![Windows Build](https://github.com/vampirefrog/muxaudio/actions/workflows/build-windows.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/build-windows.yml)
 [![WASM Build](https://github.com/vampirefrog/muxaudio/actions/workflows/build-wasm.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/build-wasm.yml)
 [![Test Matrix](https://github.com/vampirefrog/muxaudio/actions/workflows/test-matrix.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/test-matrix.yml)
 [![Release](https://github.com/vampirefrog/muxaudio/actions/workflows/release.yml/badge.svg)](https://github.com/vampirefrog/muxaudio/actions/workflows/release.yml)
