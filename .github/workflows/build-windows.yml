@@ -30,17 +30,6 @@ jobs:
 
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 'f7423ee180c4b7f40d43402c2feb3859161ef625'
-
-    - name: Install Dependencies
-      run: |
-        vcpkg install libogg:x64-windows
-        vcpkg install libvorbis:x64-windows
-        vcpkg install opus:x64-windows
-        vcpkg install libflac:x64-windows
-        vcpkg install mpg123:x64-windows
-        vcpkg install fdk-aac:x64-windows
 
     - name: Configure CMake
       run: |

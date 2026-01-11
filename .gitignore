@@ -42,3 +42,7 @@ test_*
 
 # Emscripten cache
 emsdk-cache/
+
+# vcpkg
+vcpkg_installed/
+vcpkg/
