@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "muxaudio",
+  "version": "0.1.0",
+  "builtin-baseline": "f7423ee180c4b7f40d43402c2feb3859161ef625",
+  "dependencies": [
+    "libogg",
+    "libvorbis",
+    "opus",
+    "libflac",
+    "mpg123",
+    "fdk-aac"
+  ]
+}
