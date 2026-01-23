@@ -180,6 +180,7 @@ int mux_encoder_init(struct mux_encoder *enc,
 		     enum mux_codec_type codec_type,
 		     int sample_rate,
 		     int num_channels,
+		     int num_streams,
 		     const struct mux_param *params,
 		     int num_params)
 {
@@ -187,6 +188,9 @@ int mux_encoder_init(struct mux_encoder *enc,
 	int ret;
 
 	if (!enc)
+		return MUX_ERROR_INVAL;
+
+	if (num_streams != 1 && num_streams != 2)
 		return MUX_ERROR_INVAL;
 
 	memset(enc, 0, sizeof(*enc));
@@ -199,6 +203,7 @@ int mux_encoder_init(struct mux_encoder *enc,
 	enc->ops = ops;
 	enc->sample_rate = sample_rate;
 	enc->num_channels = num_channels;
+	enc->num_streams = num_streams;
 
 	ret = mux_buffer_init(&enc->output, 4096);
 	if (ret != MUX_OK)
@@ -232,6 +237,7 @@ void mux_encoder_deinit(struct mux_encoder *enc)
 struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
 				    int sample_rate,
 				    int num_channels,
+				    int num_streams,
 				    const struct mux_param *params,
 				    int num_params)
 {
@@ -243,7 +249,7 @@ struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
 		return NULL;
 
 	ret = mux_encoder_init(enc, codec_type, sample_rate, num_channels,
-			       params, num_params);
+			       num_streams, params, num_params);
 	if (ret != MUX_OK) {
 		free(enc);
 		return NULL;
@@ -266,6 +272,7 @@ void mux_encoder_destroy(struct mux_encoder *enc)
  */
 int mux_decoder_init(struct mux_decoder *dec,
 		     enum mux_codec_type codec_type,
+		     int num_streams,
 		     const struct mux_param *params,
 		     int num_params)
 {
@@ -273,6 +280,9 @@ int mux_decoder_init(struct mux_decoder *dec,
 	int ret;
 
 	if (!dec)
+		return MUX_ERROR_INVAL;
+
+	if (num_streams != 1 && num_streams != 2)
 		return MUX_ERROR_INVAL;
 
 	memset(dec, 0, sizeof(*dec));
@@ -283,6 +293,7 @@ int mux_decoder_init(struct mux_decoder *dec,
 
 	dec->codec_type = codec_type;
 	dec->ops = ops;
+	dec->num_streams = num_streams;
 
 	ret = mux_buffer_init(&dec->audio_output, 4096);
 	if (ret != MUX_OK)
@@ -321,6 +332,7 @@ void mux_decoder_deinit(struct mux_decoder *dec)
  * Decoder - dynamic allocation
  */
 struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
+				    int num_streams,
 				    const struct mux_param *params,
 				    int num_params)
 {
@@ -331,7 +343,7 @@ struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
 	if (!dec)
 		return NULL;
 
-	ret = mux_decoder_init(dec, codec_type, params, num_params);
+	ret = mux_decoder_init(dec, codec_type, num_streams, params, num_params);
 	if (ret != MUX_OK) {
 		free(dec);
 		return NULL;

@@ -37,7 +37,7 @@ int main(void)
 	struct mux_param params[] = {
 		{ .name = "bitrate", .value.i = 128 }
 	};
-	enc = mux_encoder_new(MUX_CODEC_AAC, SAMPLE_RATE, NUM_CHANNELS, params, 1);
+	enc = mux_encoder_new(MUX_CODEC_AAC, SAMPLE_RATE, NUM_CHANNELS, 2, params, 1);
 	if (!enc) {
 		fprintf(stderr, "Error: Failed to create AAC encoder\n");
 		fprintf(stderr, "Make sure libfdk-aac is installed\n");
@@ -90,7 +90,7 @@ int main(void)
 
 	/* Create decoder */
 	printf("Creating AAC decoder...\n");
-	dec = mux_decoder_new(MUX_CODEC_AAC, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_AAC, 2, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Error: Failed to create AAC decoder\n");
 		return 1;

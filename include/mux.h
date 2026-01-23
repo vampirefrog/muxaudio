@@ -167,6 +167,7 @@ int mux_encoder_init(struct mux_encoder *enc,
 		     enum mux_codec_type codec_type,
 		     int sample_rate,
 		     int num_channels,
+		     int num_streams,
 		     const struct mux_param *params,
 		     int num_params);
 
@@ -178,6 +179,7 @@ void mux_encoder_deinit(struct mux_encoder *enc);
 struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
 				    int sample_rate,
 				    int num_channels,
+				    int num_streams,
 				    const struct mux_param *params,
 				    int num_params);
 
@@ -188,6 +190,7 @@ void mux_encoder_destroy(struct mux_encoder *enc);
  */
 int mux_decoder_init(struct mux_decoder *dec,
 		     enum mux_codec_type codec_type,
+		     int num_streams,
 		     const struct mux_param *params,
 		     int num_params);
 
@@ -197,6 +200,7 @@ void mux_decoder_deinit(struct mux_decoder *dec);
  * Decoder - dynamic allocation
  */
 struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
+				    int num_streams,
 				    const struct mux_param *params,
 				    int num_params);
 

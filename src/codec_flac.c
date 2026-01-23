@@ -230,7 +230,7 @@ static int mux_flac_encoder_encode(struct mux_encoder *enc,
 	/* Side channel data passes through uncompressed */
 	if (stream_type == MUX_STREAM_SIDE_CHANNEL) {
 		ret = mux_leb128_write_frame(&enc->output, input, input_size,
-					     stream_type);
+					     stream_type, enc->num_streams);
 		if (ret != MUX_OK)
 			return ret;
 		*input_consumed = input_size;
@@ -288,7 +288,7 @@ static int mux_flac_encoder_encode(struct mux_encoder *enc,
 	while (mux_buffer_read(&data->flac_buffer, flac_data, sizeof(flac_data),
 			       &flac_bytes) == MUX_OK && flac_bytes > 0) {
 		ret = mux_leb128_write_frame(&enc->output, flac_data, flac_bytes,
-					     MUX_STREAM_AUDIO);
+					     MUX_STREAM_AUDIO, enc->num_streams);
 		if (ret != MUX_OK)
 			return ret;
 	}
@@ -349,7 +349,7 @@ static int mux_flac_encoder_finalize(struct mux_encoder *enc)
 	while (mux_buffer_read(&data->flac_buffer, flac_data, sizeof(flac_data),
 			       &flac_bytes) == MUX_OK && flac_bytes > 0) {
 		ret = mux_leb128_write_frame(&enc->output, flac_data, flac_bytes,
-					     MUX_STREAM_AUDIO);
+					     MUX_STREAM_AUDIO, enc->num_streams);
 		if (ret != MUX_OK)
 			return ret;
 	}
@@ -593,7 +593,7 @@ static int mux_flac_decoder_decode(struct mux_decoder *dec,
 	while (1) {
 		ret = mux_leb128_read_frame(&data->leb128_input_buf,
 					    frame_buf, sizeof(frame_buf),
-					    &frame_size, &stream_type);
+					    &frame_size, &stream_type, dec->num_streams);
 		if (ret == MUX_ERROR_AGAIN) {
 			/* Need more data */
 			break;

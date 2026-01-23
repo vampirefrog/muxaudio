@@ -20,7 +20,7 @@ int main(void)
 
 	/* Create encoder */
 	printf("Creating MP3 encoder...\n");
-	enc = mux_encoder_new(MUX_CODEC_MP3, 44100, 2, NULL, 0);
+	enc = mux_encoder_new(MUX_CODEC_MP3, 44100, 2, 2, NULL, 0);
 	if (!enc) {
 		fprintf(stderr, "Failed to create encoder\n");
 		return 1;

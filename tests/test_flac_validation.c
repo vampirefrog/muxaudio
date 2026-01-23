@@ -113,7 +113,7 @@ static int test_waveform_config(const char *name, int16_t *test_signal,
 	};
 
 	enc = mux_encoder_new(MUX_CODEC_FLAC, config->sample_rate,
-			      config->num_channels, params, 1);
+			      config->num_channels, 2, params, 1);
 	if (!enc) {
 		fprintf(stderr, "Failed to create encoder\n");
 		free(muxed_buffer);
@@ -177,7 +177,7 @@ static int test_waveform_config(const char *name, int16_t *test_signal,
 	mux_encoder_destroy(enc);
 
 	/* Create decoder */
-	dec = mux_decoder_new(MUX_CODEC_FLAC, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_FLAC, 2, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Failed to create decoder\n");
 		free(muxed_buffer);
@@ -345,7 +345,7 @@ static int test_sample_rates(void)
 			{ .name = "compression", .value.i = 5 }
 		};
 
-		enc = mux_encoder_new(MUX_CODEC_FLAC, rate, 2, params, 1);
+		enc = mux_encoder_new(MUX_CODEC_FLAC, rate, 2, 2, params, 1);
 		if (!enc) {
 			fprintf(stderr, "Failed to create encoder\n");
 			free(signal);
@@ -384,7 +384,7 @@ static int test_sample_rates(void)
 
 		mux_encoder_destroy(enc);
 
-		dec = mux_decoder_new(MUX_CODEC_FLAC, NULL, 0);
+		dec = mux_decoder_new(MUX_CODEC_FLAC, 2, NULL, 0);
 		if (!dec) {
 			fprintf(stderr, "Failed to create decoder\n");
 			free(signal);
@@ -462,7 +462,7 @@ static int test_channels(void)
 		int stream_type;
 
 		struct mux_param params[] = {{ .name = "compression", .value.i = 5 }};
-		enc = mux_encoder_new(MUX_CODEC_FLAC, 44100, channels, params, 1);
+		enc = mux_encoder_new(MUX_CODEC_FLAC, 44100, channels, 2, params, 1);
 
 		if (enc) {
 			mux_encoder_encode(enc, signal, num_samples * channels * sizeof(int16_t),
@@ -483,7 +483,7 @@ static int test_channels(void)
 			mux_encoder_destroy(enc);
 		}
 
-		dec = mux_decoder_new(MUX_CODEC_FLAC, NULL, 0);
+		dec = mux_decoder_new(MUX_CODEC_FLAC, 2, NULL, 0);
 		if (dec) {
 			mux_decoder_decode(dec, muxed, muxed_size, &consumed);
 			mux_decoder_finalize(dec);
