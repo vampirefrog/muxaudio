@@ -31,7 +31,7 @@ int main(void)
 	struct mux_param params[] = {
 		{ .name = "bitrate", .value.i = 64 }
 	};
-	enc = mux_encoder_new(MUX_CODEC_OPUS, 48000, 2, params, 1);
+	enc = mux_encoder_new(MUX_CODEC_OPUS, 48000, 2, 2, params, 1);
 	if (!enc) {
 		fprintf(stderr, "Failed to create encoder\n");
 		return 1;
@@ -84,7 +84,7 @@ int main(void)
 
 	/* Create decoder */
 	printf("Creating Opus decoder...\n");
-	dec = mux_decoder_new(MUX_CODEC_OPUS, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_OPUS, 2, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Failed to create decoder\n");
 		return 1;

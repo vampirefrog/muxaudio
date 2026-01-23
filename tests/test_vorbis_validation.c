@@ -44,7 +44,7 @@ static int test_waveform(const char *name, int16_t *test_signal,
 		{ .name = "quality", .value.f = 0.4f }
 	};
 
-	enc = mux_encoder_new(MUX_CODEC_VORBIS, SAMPLE_RATE, NUM_CHANNELS,
+	enc = mux_encoder_new(MUX_CODEC_VORBIS, SAMPLE_RATE, NUM_CHANNELS, 2,
 			      params, 1);
 	if (!enc) {
 		fprintf(stderr, "Failed to create encoder\n");
@@ -119,7 +119,7 @@ static int test_waveform(const char *name, int16_t *test_signal,
 	/* Create decoder */
 	printf("Creating decoder...\n");
 	fflush(stdout);
-	dec = mux_decoder_new(MUX_CODEC_VORBIS, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_VORBIS, 2, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Failed to create decoder\n");
 		free(muxed_buffer);

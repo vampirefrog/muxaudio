@@ -20,6 +20,7 @@
 
 struct decoder_config {
 	enum mux_codec_type codec;
+	int num_streams;
 	int verbose;
 };
 
@@ -32,6 +33,7 @@ static void usage(const char *prog)
 	fprintf(stderr, "Options:\n");
 	fprintf(stderr, "  -c, --codec CODEC      Codec to use (pcm, mp3, vorbis, opus, flac, aac)\n");
 	fprintf(stderr, "                         Default: flac\n");
+	fprintf(stderr, "  -s, --streams NUM      Number of streams: 1=passthrough, 2=mux (default: 2)\n");
 	fprintf(stderr, "  -v, --verbose          Print stream information to stderr\n");
 	fprintf(stderr, "  -h, --help             Show this help\n");
 	fprintf(stderr, "\n");
@@ -57,7 +59,7 @@ static int decode_stream(const struct decoder_config *config)
 	size_t total_audio = 0, total_side = 0;
 
 	/* Create decoder */
-	dec = mux_decoder_new(config->codec, NULL, 0);
+	dec = mux_decoder_new(config->codec, config->num_streams, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Error: Failed to create decoder\n");
 		return 1;
@@ -135,23 +137,32 @@ int main(int argc, char **argv)
 {
 	struct decoder_config config = {
 		.codec = MUX_CODEC_FLAC,
+		.num_streams = 2,
 		.verbose = 0
 	};
 
 	static struct option long_options[] = {
 		{"codec",     required_argument, 0, 'c'},
+		{"streams",   required_argument, 0, 's'},
 		{"verbose",   no_argument,       0, 'v'},
 		{"help",      no_argument,       0, 'h'},
 		{0, 0, 0, 0}
 	};
 
 	int opt;
-	while ((opt = getopt_long(argc, argv, "c:vh", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "c:s:vh", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'c':
 			if (mux_codec_from_name(optarg, &config.codec) != MUX_OK) {
 				fprintf(stderr, "Error: Unknown codec '%s'\n", optarg);
 				usage(argv[0]);
+				return 1;
+			}
+			break;
+		case 's':
+			config.num_streams = atoi(optarg);
+			if (config.num_streams != 1 && config.num_streams != 2) {
+				fprintf(stderr, "Error: Invalid stream count (must be 1 or 2)\n");
 				return 1;
 			}
 			break;

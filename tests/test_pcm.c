@@ -43,7 +43,7 @@ int main(void)
 
 	/* Create encoder */
 	printf("Creating PCM encoder...\n");
-	enc = mux_encoder_new(MUX_CODEC_PCM, 44100, 2, NULL, 0);
+	enc = mux_encoder_new(MUX_CODEC_PCM, 44100, 2, 2, NULL, 0);
 	if (!enc) {
 		fprintf(stderr, "Failed to create encoder\n");
 		return 1;
@@ -85,7 +85,7 @@ int main(void)
 
 	/* Create decoder */
 	printf("Creating PCM decoder...\n");
-	dec = mux_decoder_new(MUX_CODEC_PCM, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_PCM, 2, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Failed to create decoder\n");
 		return 1;
