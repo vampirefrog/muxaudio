@@ -220,6 +220,11 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
 
+    - name: Install Shared Dependencies
+      run: |
+        vcpkg install --triplet x64-windows `
+          ogg vorbis opus flac mpg123 fdk-aac
+
     - name: Build Shared Library
       run: |
         mkdir build
@@ -273,6 +278,11 @@ jobs:
 
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
+
+    - name: Install Static Dependencies
+      run: |
+        vcpkg install --triplet x64-windows-static `
+          ogg vorbis opus flac mpg123 fdk-aac
 
     - name: Build Static Library
       run: |
