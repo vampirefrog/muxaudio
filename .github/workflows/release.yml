@@ -308,25 +308,25 @@ jobs:
         Copy-Item "$vcpkgLib/fdk-aac.lib" release/windows-x64-static/
 
         # Create README with linking instructions
-        @"
-MuxAudio Static Library Build
-==============================
-
-This package contains muxaudio-static.lib and all required codec static libraries.
-
-To link against this library in your Visual Studio project:
-
-1. Add all .lib files to your project's linker input
-2. Or use this linker command:
-   muxaudio-static.lib vorbisenc.lib vorbis.lib opus.lib FLAC.lib mpg123.lib fdk-aac.lib ogg.lib
-
-With CMake:
-
-target_link_libraries(yourapp
-  `${CMAKE_CURRENT_SOURCE_DIR}/muxaudio-static.lib
-  vorbisenc vorbis opus FLAC mpg123 fdk-aac ogg
-)
-"@ | Out-File -FilePath release/windows-x64-static/README.txt
+        Set-Content -Path release/windows-x64-static/README.txt -Value @(
+          "MuxAudio Static Library Build",
+          "==============================",
+          "",
+          "This package contains muxaudio-static.lib and all required codec static libraries.",
+          "",
+          "To link against this library in your Visual Studio project:",
+          "",
+          "1. Add all .lib files to your project's linker input",
+          "2. Or use this linker command:",
+          "   muxaudio-static.lib vorbisenc.lib vorbis.lib opus.lib FLAC.lib mpg123.lib fdk-aac.lib ogg.lib",
+          "",
+          "With CMake:",
+          "",
+          "target_link_libraries(yourapp",
+          "  `${CMAKE_CURRENT_SOURCE_DIR}/muxaudio-static.lib",
+          "  vorbisenc vorbis opus FLAC mpg123 fdk-aac ogg",
+          ")"
+        )
 
         cd release
         Compress-Archive -Path windows-x64-static -DestinationPath muxaudio-windows-x64-static.zip
