@@ -222,8 +222,7 @@ jobs:
 
     - name: Install Shared Dependencies
       run: |
-        vcpkg install --triplet x64-windows `
-          ogg vorbis opus flac mpg123 fdk-aac
+        vcpkg install --triplet x64-windows
 
     - name: Build Shared Library
       run: |
@@ -283,8 +282,7 @@ jobs:
 
     - name: Install Static Dependencies
       run: |
-        vcpkg install --triplet x64-windows-static `
-          ogg vorbis opus flac mpg123 fdk-aac
+        vcpkg install --triplet x64-windows-static
 
     - name: Build Static Library
       run: |
