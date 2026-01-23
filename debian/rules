@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
+export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DBUILD_ALL_CODECS=ON \
+		-DBUILD_ENCODERS=ON \
+		-DBUILD_DECODERS=ON \
+		-DBUILD_SHARED=ON \
+		-DBUILD_STATIC_FULL=ON \
+		-DCMAKE_BUILD_TYPE=Release
+
+override_dh_auto_test:
+	# Skip tests for now (can add later)
+	:
