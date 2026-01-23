@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  build-linux:
+  build-linux-shared:
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +37,7 @@ jobs:
           libmp3lame-dev \
           libfdk-aac-dev
 
-    - name: Build (All Codecs)
+    - name: Build Shared Library
       run: |
         mkdir build
         cd build
@@ -45,24 +45,172 @@ jobs:
           -DBUILD_ALL_CODECS=ON \
           -DBUILD_ENCODERS=ON \
           -DBUILD_DECODERS=ON \
+          -DBUILD_SHARED=ON \
+          -DBUILD_STATIC_FULL=OFF \
           -DCMAKE_BUILD_TYPE=Release
         make -j$(nproc)
 
-    - name: Package
+    - name: Package Shared Library
       run: |
-        mkdir -p release/native-linux-x64
-        cp build/libmuxaudio.so* build/libmuxaudio-static.a build/mux build/demux release/native-linux-x64/
+        mkdir -p release/linux-x64-shared
+        cp build/libmuxaudio.so build/mux build/demux release/linux-x64-shared/
+        cp -P /usr/lib/x86_64-linux-gnu/libogg.so* release/linux-x64-shared/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libvorbis.so* release/linux-x64-shared/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libvorbisenc.so* release/linux-x64-shared/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libopus.so* release/linux-x64-shared/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libFLAC.so* release/linux-x64-shared/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libmpg123.so* release/linux-x64-shared/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libmp3lame.so* release/linux-x64-shared/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libfdk-aac.so* release/linux-x64-shared/ || true
         cd release
-        tar czf muxaudio-native-linux-x64.tar.gz native-linux-x64/
+        tar czf muxaudio-linux-x64-shared.tar.gz linux-x64-shared/
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: linux-release
-        path: release/muxaudio-native-linux-x64.tar.gz
+        name: linux-shared-release
+        path: release/muxaudio-linux-x64-shared.tar.gz
         retention-days: 1
 
-  build-windows:
+  build-linux-static:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          pkg-config \
+          libogg-dev \
+          libvorbis-dev \
+          libopus-dev \
+          libflac-dev \
+          libmpg123-dev \
+          libmp3lame-dev \
+          libfdk-aac-dev
+
+    - name: Build Static Library
+      run: |
+        mkdir build
+        cd build
+        cmake .. \
+          -DBUILD_ALL_CODECS=ON \
+          -DBUILD_ENCODERS=ON \
+          -DBUILD_DECODERS=ON \
+          -DBUILD_SHARED=OFF \
+          -DBUILD_STATIC_FULL=ON \
+          -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+
+    - name: Package Static Library
+      run: |
+        mkdir -p release/linux-x64-static
+        cp build/libmuxaudio-static.a release/linux-x64-static/
+        cp -P /usr/lib/x86_64-linux-gnu/libogg.a release/linux-x64-static/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libvorbis.a release/linux-x64-static/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libvorbisenc.a release/linux-x64-static/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libopus.a release/linux-x64-static/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libFLAC.a release/linux-x64-static/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libmpg123.a release/linux-x64-static/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libmp3lame.a release/linux-x64-static/ || true
+        cp -P /usr/lib/x86_64-linux-gnu/libfdk-aac.a release/linux-x64-static/ || true
+
+        # Create README with linking instructions
+        cat > release/linux-x64-static/README.txt << 'EOF'
+        MuxAudio Static Library Build
+        ==============================
+
+        This package contains libmuxaudio-static.a and all required codec static libraries.
+
+        To link against this library in your project:
+
+        gcc yourapp.c -o yourapp \
+          -L. -lmuxaudio-static \
+          -lvorbisenc -lvorbis -lopus -lFLAC -lmp3lame -lmpg123 -lfdk-aac -logg \
+          -lm
+
+        Or with CMake:
+
+        target_link_libraries(yourapp
+          ${CMAKE_CURRENT_SOURCE_DIR}/libmuxaudio-static.a
+          vorbisenc vorbis opus FLAC mp3lame mpg123 fdk-aac ogg m
+        )
+        EOF
+
+        cd release
+        tar czf muxaudio-linux-x64-static.tar.gz linux-x64-static/
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-static-release
+        path: release/muxaudio-linux-x64-static.tar.gz
+        retention-days: 1
+
+  build-deb:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          debhelper \
+          devscripts \
+          build-essential \
+          cmake \
+          pkg-config \
+          libogg-dev \
+          libvorbis-dev \
+          libopus-dev \
+          libflac-dev \
+          libmpg123-dev \
+          libmp3lame-dev \
+          libfdk-aac-dev
+
+    - name: Update Version in debian/changelog
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        if [ -z "$VERSION" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+          VERSION="${VERSION#v}"
+        fi
+        if [ -z "$VERSION" ]; then
+          VERSION="0.1.0"
+        fi
+
+        # Update changelog with version and timestamp
+        TIMESTAMP=$(date -R)
+        sed -i "1s/UNRELEASED/unstable/" debian/changelog
+        sed -i "1s/(0.1.0-1)/($VERSION-1)/" debian/changelog
+        sed -i "s/Thu, 23 Jan 2025 20:00:00 +0000/$TIMESTAMP/" debian/changelog
+
+    - name: Build Debian Package
+      run: |
+        dpkg-buildpackage -us -uc -b
+
+    - name: Package Artifacts
+      run: |
+        mkdir -p release
+        mv ../*.deb release/
+        ls -lh release/
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: deb-packages
+        path: release/*.deb
+        retention-days: 1
+
+  build-windows-shared:
     runs-on: windows-latest
 
     steps:
@@ -72,7 +220,7 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
 
-    - name: Build (All Codecs)
+    - name: Build Shared Library
       run: |
         mkdir build
         cd build
@@ -81,37 +229,113 @@ jobs:
           -DBUILD_DECODERS=ON `
           -DBUILD_TOOLS=OFF `
           -DBUILD_TESTS=OFF `
+          -DBUILD_SHARED=ON `
+          -DBUILD_STATIC_FULL=OFF `
           -DCMAKE_BUILD_TYPE=Release `
           -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
           -DVCPKG_TARGET_TRIPLET=x64-windows
         cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
 
-    - name: Package
+    - name: Package Shared Library
       run: |
-        mkdir -p release/windows-x64
+        mkdir -p release/windows-x64-shared
 
         # Copy muxaudio binaries
-        Copy-Item build/Release/*.dll release/windows-x64/
-        Copy-Item build/Release/*.lib release/windows-x64/
+        Copy-Item build/Release/muxaudio.dll release/windows-x64-shared/
+        Copy-Item build/Release/muxaudio.lib release/windows-x64-shared/
 
         # Copy codec DLLs from vcpkg
         $vcpkgBin = "$env:VCPKG_ROOT/installed/x64-windows/bin"
-        Copy-Item "$vcpkgBin/ogg.dll" release/windows-x64/
-        Copy-Item "$vcpkgBin/vorbis.dll" release/windows-x64/
-        Copy-Item "$vcpkgBin/vorbisenc.dll" release/windows-x64/
-        Copy-Item "$vcpkgBin/opus.dll" release/windows-x64/
-        Copy-Item "$vcpkgBin/FLAC.dll" release/windows-x64/
-        Copy-Item "$vcpkgBin/mpg123.dll" release/windows-x64/
-        Copy-Item "$vcpkgBin/fdk-aac-2.dll" release/windows-x64/
+        Copy-Item "$vcpkgBin/ogg.dll" release/windows-x64-shared/
+        Copy-Item "$vcpkgBin/vorbis.dll" release/windows-x64-shared/
+        Copy-Item "$vcpkgBin/vorbisenc.dll" release/windows-x64-shared/
+        Copy-Item "$vcpkgBin/opus.dll" release/windows-x64-shared/
+        Copy-Item "$vcpkgBin/FLAC.dll" release/windows-x64-shared/
+        Copy-Item "$vcpkgBin/mpg123.dll" release/windows-x64-shared/
+        Copy-Item "$vcpkgBin/fdk-aac-2.dll" release/windows-x64-shared/
 
         cd release
-        Compress-Archive -Path windows-x64 -DestinationPath muxaudio-windows-x64.zip
+        Compress-Archive -Path windows-x64-shared -DestinationPath muxaudio-windows-x64-shared.zip
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: windows-release
-        path: release/muxaudio-windows-x64.zip
+        name: windows-shared-release
+        path: release/muxaudio-windows-x64-shared.zip
+        retention-days: 1
+
+  build-windows-static:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+
+    - name: Build Static Library
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DBUILD_ALL_CODECS=ON `
+          -DBUILD_ENCODERS=ON `
+          -DBUILD_DECODERS=ON `
+          -DBUILD_TOOLS=OFF `
+          -DBUILD_TESTS=OFF `
+          -DBUILD_SHARED=OFF `
+          -DBUILD_STATIC_FULL=ON `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static
+        cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+
+    - name: Package Static Library
+      run: |
+        mkdir -p release/windows-x64-static
+
+        # Copy muxaudio static library
+        Copy-Item build/Release/muxaudio-static.lib release/windows-x64-static/
+
+        # Copy codec static libraries from vcpkg
+        $vcpkgLib = "$env:VCPKG_ROOT/installed/x64-windows-static/lib"
+        Copy-Item "$vcpkgLib/ogg.lib" release/windows-x64-static/
+        Copy-Item "$vcpkgLib/vorbis.lib" release/windows-x64-static/
+        Copy-Item "$vcpkgLib/vorbisenc.lib" release/windows-x64-static/
+        Copy-Item "$vcpkgLib/opus.lib" release/windows-x64-static/
+        Copy-Item "$vcpkgLib/FLAC.lib" release/windows-x64-static/
+        Copy-Item "$vcpkgLib/mpg123.lib" release/windows-x64-static/
+        Copy-Item "$vcpkgLib/fdk-aac.lib" release/windows-x64-static/
+
+        # Create README with linking instructions
+        @"
+MuxAudio Static Library Build
+==============================
+
+This package contains muxaudio-static.lib and all required codec static libraries.
+
+To link against this library in your Visual Studio project:
+
+1. Add all .lib files to your project's linker input
+2. Or use this linker command:
+   muxaudio-static.lib vorbisenc.lib vorbis.lib opus.lib FLAC.lib mpg123.lib fdk-aac.lib ogg.lib
+
+With CMake:
+
+target_link_libraries(yourapp
+  `${CMAKE_CURRENT_SOURCE_DIR}/muxaudio-static.lib
+  vorbisenc vorbis opus FLAC mpg123 fdk-aac ogg
+)
+"@ | Out-File -FilePath release/windows-x64-static/README.txt
+
+        cd release
+        Compress-Archive -Path windows-x64-static -DestinationPath muxaudio-windows-x64-static.zip
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-static-release
+        path: release/muxaudio-windows-x64-static.zip
         retention-days: 1
 
   build-wasm:
@@ -172,20 +396,38 @@ jobs:
         retention-days: 1
 
   create-release:
-    needs: [build-linux, build-windows, build-wasm]
+    needs: [build-linux-shared, build-linux-static, build-deb, build-windows-shared, build-windows-static, build-wasm]
     runs-on: ubuntu-latest
 
     steps:
-    - name: Download Linux Artifact
+    - name: Download Linux Shared Artifact
       uses: actions/download-artifact@v4
       with:
-        name: linux-release
+        name: linux-shared-release
         path: release
 
-    - name: Download Windows Artifact
+    - name: Download Linux Static Artifact
       uses: actions/download-artifact@v4
       with:
-        name: windows-release
+        name: linux-static-release
+        path: release
+
+    - name: Download Debian Packages
+      uses: actions/download-artifact@v4
+      with:
+        name: deb-packages
+        path: release
+
+    - name: Download Windows Shared Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-shared-release
+        path: release
+
+    - name: Download Windows Static Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-static-release
         path: release
 
     - name: Download WASM Artifact
@@ -202,38 +444,87 @@ jobs:
         body: |
           ## MuxAudio Release ${{ github.ref_name || github.event.inputs.tag }}
 
-          ### Native Linux Build
-          - Shared library: `libmuxaudio.so`
-          - Static library: `libmuxaudio-static.a`
-          - CLI tools: `mux`, `demux`
-          - All codecs enabled (PCM, Vorbis, Opus, FLAC, MP3, AAC)
+          ### Linux Builds
 
-          ### Windows Build
-          - DLL: `muxaudio.dll`
-          - Import library: `muxaudio.lib`
-          - Static library: `muxaudio-static.lib`
-          - All codecs enabled (PCM, Vorbis, Opus, FLAC, MP3, AAC)
-          - Includes all codec DLLs (ogg.dll, vorbis.dll, opus.dll, etc.)
+          **Shared Library (`muxaudio-linux-x64-shared.tar.gz`)**
+          - `libmuxaudio.so` - shared library with external codec dependencies
+          - `mux`, `demux` - CLI tools
+          - All codec shared libraries included (`.so` files)
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
+
+          **Static Library (`muxaudio-linux-x64-static.tar.gz`)**
+          - `libmuxaudio-static.a` - static library
+          - All codec static libraries included (`.a` files)
+          - No runtime codec dependencies
+          - Includes README with linking instructions
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
+
+          **Debian Packages (.deb files)**
+          - `libmuxaudio0_*.deb` - Runtime library package
+          - `libmuxaudio-dev_*.deb` - Development files (headers, static library)
+          - `muxaudio-tools_*.deb` - Command-line tools (mux, demux)
+          - Automatic dependency resolution for codec libraries
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
+
+          ### Windows Builds
+
+          **Shared Library (`muxaudio-windows-x64-shared.zip`)**
+          - `muxaudio.dll` - shared library with external codec dependencies
+          - `muxaudio.lib` - import library
+          - All codec DLLs included (ogg.dll, vorbis.dll, opus.dll, etc.)
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
+
+          **Static Library (`muxaudio-windows-x64-static.zip`)**
+          - `muxaudio-static.lib` - static library
+          - All codec static libraries included (`.lib` files)
+          - No runtime codec DLL dependencies
+          - Includes README with linking instructions
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
 
           ### WASM Build
+
+          **Decoder (`muxaudio-wasm-decoder.tar.gz`)**
           - Decoder-only build for browser use
-          - Codecs: PCM, Vorbis, Opus, FLAC, MP3
+          - Fully static with codecs embedded
           - Files: `muxaudio.js`, `muxaudio.wasm`, `muxaudio.wrapper.js`
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3 (decode only)
 
           ### Installation
 
-          **Linux:**
+          **Debian/Ubuntu (Recommended):**
           ```bash
-          tar xzf muxaudio-native-linux-x64.tar.gz
-          sudo cp native-linux-x64/libmuxaudio.so* /usr/local/lib/
-          sudo cp native-linux-x64/mux native-linux-x64/demux /usr/local/bin/
+          # Install all packages
+          sudo apt install ./libmuxaudio0_*.deb ./libmuxaudio-dev_*.deb ./muxaudio-tools_*.deb
+
+          # Or install only what you need:
+          sudo apt install ./libmuxaudio0_*.deb ./muxaudio-tools_*.deb  # Runtime only
+          sudo apt install ./libmuxaudio0_*.deb ./libmuxaudio-dev_*.deb  # Development
+          ```
+
+          **Linux Shared:**
+          ```bash
+          tar xzf muxaudio-linux-x64-shared.tar.gz
+          sudo cp linux-x64-shared/*.so* /usr/local/lib/
+          sudo cp linux-x64-shared/mux linux-x64-shared/demux /usr/local/bin/
           sudo ldconfig
           ```
 
-          **Windows:**
+          **Linux Static:**
+          ```bash
+          tar xzf muxaudio-linux-x64-static.tar.gz
+          # See README.txt in the archive for linking instructions
+          ```
+
+          **Windows Shared:**
           ```powershell
-          Expand-Archive muxaudio-windows-x64.zip
-          # Copy DLL and EXE files to your project or system PATH
+          Expand-Archive muxaudio-windows-x64-shared.zip
+          # Copy all DLL files to your application directory or system PATH
+          ```
+
+          **Windows Static:**
+          ```powershell
+          Expand-Archive muxaudio-windows-x64-static.zip
+          # See README.txt in the archive for linking instructions
           ```
 
           **WASM:**
@@ -244,6 +535,9 @@ jobs:
         draft: false
         prerelease: false
         files: |
-          release/muxaudio-native-linux-x64.tar.gz
-          release/muxaudio-windows-x64.zip
+          release/muxaudio-linux-x64-shared.tar.gz
+          release/muxaudio-linux-x64-static.tar.gz
+          release/*.deb
+          release/muxaudio-windows-x64-shared.zip
+          release/muxaudio-windows-x64-static.zip
           release/muxaudio-wasm-decoder.tar.gz

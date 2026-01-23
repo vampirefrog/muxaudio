@@ -1,0 +1,58 @@
+Source: muxaudio
+Section: sound
+Priority: optional
+Maintainer: MuxAudio Developers <noreply@example.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.16),
+               pkg-config,
+               libogg-dev,
+               libvorbis-dev,
+               libopus-dev,
+               libflac-dev,
+               libmpg123-dev,
+               libmp3lame-dev,
+               libfdk-aac-dev
+Standards-Version: 4.6.0
+Homepage: https://github.com/anthropics/muxaudio
+Vcs-Git: https://github.com/anthropics/muxaudio.git
+Vcs-Browser: https://github.com/anthropics/muxaudio
+
+Package: libmuxaudio0
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Audio multiplexing library with side-channel support
+ MuxAudio is a C library for multiplexing audio streams with side-channel
+ data (such as speech events, visemes, word boundaries) using LEB128 framing.
+ .
+ This package contains the shared library.
+
+Package: libmuxaudio-dev
+Section: libdevel
+Architecture: any
+Depends: libmuxaudio0 (= ${binary:Version}),
+         ${misc:Depends},
+         libogg-dev,
+         libvorbis-dev,
+         libopus-dev,
+         libflac-dev,
+         libmpg123-dev,
+         libmp3lame-dev,
+         libfdk-aac-dev
+Description: Audio multiplexing library - development files
+ MuxAudio is a C library for multiplexing audio streams with side-channel
+ data (such as speech events, visemes, word boundaries) using LEB128 framing.
+ .
+ This package contains the development files (headers and static library).
+
+Package: muxaudio-tools
+Architecture: any
+Depends: libmuxaudio0 (= ${binary:Version}),
+         ${shlibs:Depends},
+         ${misc:Depends}
+Description: Audio multiplexing tools
+ MuxAudio is a C library for multiplexing audio streams with side-channel
+ data (such as speech events, visemes, word boundaries) using LEB128 framing.
+ .
+ This package contains command-line tools:
+  * mux - Encode audio from stdin with side channel data from fd 3
+  * demux - Decode multiplexed stream to audio and side channel data

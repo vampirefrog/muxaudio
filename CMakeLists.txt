@@ -18,6 +18,8 @@ endif()
 if(NOT IS_WASM)
     option(BUILD_TOOLS "Build command-line tools" ON)
     option(BUILD_TESTS "Build tests" ON)
+    option(BUILD_SHARED "Build shared library" ON)
+    option(BUILD_STATIC_FULL "Build fully static library with embedded codecs" ON)
 endif()
 
 # Encoder/Decoder options
@@ -115,6 +117,12 @@ if(IS_WASM)
 else()
     # Native: Use system-installed codec libraries
     # Prefer vcpkg's find_package, fallback to pkg-config
+
+    # Determine if we need static libraries
+    set(NEED_STATIC_CODECS FALSE)
+    if(BUILD_STATIC_FULL AND NOT BUILD_SHARED)
+        set(NEED_STATIC_CODECS TRUE)
+    endif()
 
     # Try vcpkg-style find_package first (Windows with vcpkg)
     if(DEFINED ENV{VCPKG_ROOT} OR DEFINED VCPKG_TARGET_TRIPLET)
@@ -599,123 +607,156 @@ if(IS_WASM)
 
 else()
     # ========================================
-    # Native Build: Shared + Static libraries
+    # Native Build: Shared or Fully Static
     # ========================================
 
-    # Shared library (system codecs)
-    add_library(muxaudio SHARED ${MUXAUDIO_SOURCES})
+    set(INSTALL_TARGETS "")
 
-    target_include_directories(muxaudio
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include>
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/src
-            ${MUXAUDIO_INCLUDES}
-    )
+    # Shared library (external codec DLLs/SOs)
+    if(BUILD_SHARED)
+        add_library(muxaudio SHARED ${MUXAUDIO_SOURCES})
 
-    target_compile_definitions(muxaudio PRIVATE ${MUXAUDIO_DEFINES})
+        target_include_directories(muxaudio
+            PUBLIC
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                $<INSTALL_INTERFACE:include>
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/src
+                ${MUXAUDIO_INCLUDES}
+        )
 
-    if(MUXAUDIO_LIBRARIES)
-        target_link_libraries(muxaudio PRIVATE ${MUXAUDIO_LIBRARIES})
+        target_compile_definitions(muxaudio PRIVATE ${MUXAUDIO_DEFINES})
+
+        if(MUXAUDIO_LIBRARIES)
+            target_link_libraries(muxaudio PRIVATE ${MUXAUDIO_LIBRARIES})
+        endif()
+
+        list(APPEND INSTALL_TARGETS muxaudio)
     endif()
 
-    # Static library (system codecs)
-    add_library(muxaudio-static STATIC ${MUXAUDIO_SOURCES})
+    # Fully static library (codecs embedded)
+    if(BUILD_STATIC_FULL)
+        add_library(muxaudio-static STATIC ${MUXAUDIO_SOURCES})
 
-    target_include_directories(muxaudio-static
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include>
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/src
-            ${MUXAUDIO_INCLUDES}
-    )
+        target_include_directories(muxaudio-static
+            PUBLIC
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                $<INSTALL_INTERFACE:include>
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/src
+                ${MUXAUDIO_INCLUDES}
+        )
 
-    target_compile_definitions(muxaudio-static PRIVATE ${MUXAUDIO_DEFINES})
+        target_compile_definitions(muxaudio-static PRIVATE ${MUXAUDIO_DEFINES})
 
-    if(MUXAUDIO_LIBRARIES)
-        target_link_libraries(muxaudio-static PUBLIC ${MUXAUDIO_LIBRARIES})
+        if(MUXAUDIO_LIBRARIES)
+            # For fully static, link codecs privately (embedded)
+            target_link_libraries(muxaudio-static PRIVATE ${MUXAUDIO_LIBRARIES})
+        endif()
+
+        list(APPEND INSTALL_TARGETS muxaudio-static)
     endif()
 
     # Installation
-    install(TARGETS muxaudio muxaudio-static
-        EXPORT muxaudio-targets
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib
-        RUNTIME DESTINATION bin
-    )
+    if(INSTALL_TARGETS)
+        install(TARGETS ${INSTALL_TARGETS}
+            EXPORT muxaudio-targets
+            LIBRARY DESTINATION lib
+            ARCHIVE DESTINATION lib
+            RUNTIME DESTINATION bin
+        )
 
-    install(FILES include/mux.h
-        DESTINATION include
-    )
+        install(FILES include/mux.h
+            DESTINATION include
+        )
+    endif()
 
     # Command-line tools
     if(BUILD_TOOLS)
-        add_executable(mux tools/mux.c)
-        target_link_libraries(mux muxaudio)
+        # Link to whichever library is built (prefer shared)
+        set(MUXAUDIO_LINK_TARGET "")
+        if(BUILD_SHARED)
+            set(MUXAUDIO_LINK_TARGET muxaudio)
+        elseif(BUILD_STATIC_FULL)
+            set(MUXAUDIO_LINK_TARGET muxaudio-static)
+        endif()
 
-        add_executable(demux tools/demux.c)
-        target_link_libraries(demux muxaudio)
+        if(MUXAUDIO_LINK_TARGET)
+            add_executable(mux tools/mux.c)
+            target_link_libraries(mux ${MUXAUDIO_LINK_TARGET})
 
-        install(TARGETS mux demux
-            RUNTIME DESTINATION bin
-        )
+            add_executable(demux tools/demux.c)
+            target_link_libraries(demux ${MUXAUDIO_LINK_TARGET})
+
+            install(TARGETS mux demux
+                RUNTIME DESTINATION bin
+            )
+        endif()
     endif()
 
     # Tests
     if(BUILD_TESTS)
-        # Test utilities library
-        add_library(test_utils STATIC tests/test_utils.c)
-        target_include_directories(test_utils PUBLIC tests)
-        target_link_libraries(test_utils m)
-
-        # Core tests
-        add_executable(test_pcm tests/test_pcm.c)
-        target_link_libraries(test_pcm muxaudio)
-
-        add_executable(test_errors tests/test_errors.c)
-        target_link_libraries(test_errors muxaudio)
-
-        add_executable(test_waveforms tests/test_waveforms.c)
-        target_link_libraries(test_waveforms muxaudio test_utils m)
-
-        # Codec-specific tests
-        if(LAME_FOUND AND MPG123_FOUND)
-            add_executable(test_mp3 tests/test_mp3.c)
-            target_link_libraries(test_mp3 muxaudio m)
-
-            add_executable(test_mp3_simple tests/test_mp3_simple.c)
-            target_link_libraries(test_mp3_simple muxaudio)
-
-            add_executable(test_lossy_validation tests/test_lossy_validation.c)
-            target_link_libraries(test_lossy_validation muxaudio test_utils m)
+        # Link to whichever library is built (prefer shared)
+        set(MUXAUDIO_LINK_TARGET "")
+        if(BUILD_SHARED)
+            set(MUXAUDIO_LINK_TARGET muxaudio)
+        elseif(BUILD_STATIC_FULL)
+            set(MUXAUDIO_LINK_TARGET muxaudio-static)
         endif()
 
-        if(VORBIS_FOUND)
-            add_executable(test_vorbis_simple tests/test_vorbis_simple.c)
-            target_link_libraries(test_vorbis_simple muxaudio m)
+        if(MUXAUDIO_LINK_TARGET)
+            # Test utilities library
+            add_library(test_utils STATIC tests/test_utils.c)
+            target_include_directories(test_utils PUBLIC tests)
+            target_link_libraries(test_utils m)
 
-            add_executable(test_vorbis_validation tests/test_vorbis_validation.c)
-            target_link_libraries(test_vorbis_validation muxaudio test_utils m)
-        endif()
+            # Core tests
+            add_executable(test_pcm tests/test_pcm.c)
+            target_link_libraries(test_pcm ${MUXAUDIO_LINK_TARGET})
 
-        if(OPUS_FOUND)
-            add_executable(test_opus_simple tests/test_opus_simple.c)
-            target_link_libraries(test_opus_simple muxaudio m)
-        endif()
+            add_executable(test_errors tests/test_errors.c)
+            target_link_libraries(test_errors ${MUXAUDIO_LINK_TARGET})
 
-        if(FLAC_FOUND)
-            add_executable(test_flac_simple tests/test_flac_simple.c)
-            target_link_libraries(test_flac_simple muxaudio m)
+            add_executable(test_waveforms tests/test_waveforms.c)
+            target_link_libraries(test_waveforms ${MUXAUDIO_LINK_TARGET} test_utils m)
 
-            add_executable(test_flac_validation tests/test_flac_validation.c)
-            target_link_libraries(test_flac_validation muxaudio test_utils m)
-        endif()
+            # Codec-specific tests
+            if(LAME_FOUND AND MPG123_FOUND)
+                add_executable(test_mp3 tests/test_mp3.c)
+                target_link_libraries(test_mp3 ${MUXAUDIO_LINK_TARGET} m)
 
-        if(FDK_AAC_FOUND)
-            add_executable(test_aac_simple tests/test_aac_simple.c)
-            target_link_libraries(test_aac_simple muxaudio m)
+                add_executable(test_mp3_simple tests/test_mp3_simple.c)
+                target_link_libraries(test_mp3_simple ${MUXAUDIO_LINK_TARGET})
+
+                add_executable(test_lossy_validation tests/test_lossy_validation.c)
+                target_link_libraries(test_lossy_validation ${MUXAUDIO_LINK_TARGET} test_utils m)
+            endif()
+
+            if(VORBIS_FOUND)
+                add_executable(test_vorbis_simple tests/test_vorbis_simple.c)
+                target_link_libraries(test_vorbis_simple ${MUXAUDIO_LINK_TARGET} m)
+
+                add_executable(test_vorbis_validation tests/test_vorbis_validation.c)
+                target_link_libraries(test_vorbis_validation ${MUXAUDIO_LINK_TARGET} test_utils m)
+            endif()
+
+            if(OPUS_FOUND)
+                add_executable(test_opus_simple tests/test_opus_simple.c)
+                target_link_libraries(test_opus_simple ${MUXAUDIO_LINK_TARGET} m)
+            endif()
+
+            if(FLAC_FOUND)
+                add_executable(test_flac_simple tests/test_flac_simple.c)
+                target_link_libraries(test_flac_simple ${MUXAUDIO_LINK_TARGET} m)
+
+                add_executable(test_flac_validation tests/test_flac_validation.c)
+                target_link_libraries(test_flac_validation ${MUXAUDIO_LINK_TARGET} test_utils m)
+            endif()
+
+            if(FDK_AAC_FOUND)
+                add_executable(test_aac_simple tests/test_aac_simple.c)
+                target_link_libraries(test_aac_simple ${MUXAUDIO_LINK_TARGET} m)
+            endif()
         endif()
     endif()
 
@@ -723,10 +764,16 @@ else()
     message(STATUS "")
     message(STATUS "=== MuxAudio Native Build ===")
     message(STATUS "Targets:")
-    message(STATUS "  - muxaudio: Shared library (.so)")
-    message(STATUS "  - muxaudio-static: Static library (.a)")
+    if(BUILD_SHARED)
+        message(STATUS "  - muxaudio: Shared library with external codec DLLs/SOs")
+    endif()
+    if(BUILD_STATIC_FULL)
+        message(STATUS "  - muxaudio-static: Fully static library (codecs embedded)")
+    endif()
+    if(BUILD_TOOLS)
+        message(STATUS "  - mux, demux: Command-line tools")
+    endif()
     message(STATUS "")
-    message(STATUS "All targets use system codec libraries")
     message(STATUS "=============================")
     message(STATUS "")
 endif()

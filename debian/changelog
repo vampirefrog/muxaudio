@@ -1,0 +1,9 @@
+muxaudio (0.1.0-1) UNRELEASED; urgency=medium
+
+  * Initial release
+  * Support for PCM, Vorbis, Opus, FLAC, MP3, and AAC codecs
+  * LEB128 multiplexing for audio and side-channel data
+  * Passthrough mode for single-stream audio
+  * Command-line tools: mux and demux
+
+ -- MuxAudio Developers <noreply@example.com>  Thu, 23 Jan 2025 20:00:00 +0000
