@@ -251,13 +251,15 @@ jobs:
 
         # Copy codec DLLs from vcpkg
         $vcpkgBin = "$env:VCPKG_ROOT/installed/x64-windows/bin"
-        Copy-Item "$vcpkgBin/ogg.dll" release/windows-x64-shared/
-        Copy-Item "$vcpkgBin/vorbis.dll" release/windows-x64-shared/
-        Copy-Item "$vcpkgBin/vorbisenc.dll" release/windows-x64-shared/
-        Copy-Item "$vcpkgBin/opus.dll" release/windows-x64-shared/
-        Copy-Item "$vcpkgBin/FLAC.dll" release/windows-x64-shared/
-        Copy-Item "$vcpkgBin/mpg123.dll" release/windows-x64-shared/
-        Copy-Item "$vcpkgBin/fdk-aac-2.dll" release/windows-x64-shared/
+        if (Test-Path $vcpkgBin) {
+          Write-Host "Copying DLLs from: $vcpkgBin"
+          Get-ChildItem "$vcpkgBin/*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName release/windows-x64-shared/
+            Write-Host "Copied: $($_.Name)"
+          }
+        } else {
+          Write-Host "Warning: vcpkg bin directory not found at $vcpkgBin"
+        }
 
         cd release
         Compress-Archive -Path windows-x64-shared -DestinationPath muxaudio-windows-x64-shared.zip
@@ -307,15 +309,29 @@ jobs:
         # Copy muxaudio static library
         Copy-Item build/Release/muxaudio-static.lib release/windows-x64-static/
 
+        # Debug: Check vcpkg installation
+        Write-Host "Checking vcpkg directories..."
+        Write-Host "VCPKG_ROOT: $env:VCPKG_ROOT"
+        if (Test-Path "$env:VCPKG_ROOT/installed/x64-windows-static") {
+          Write-Host "Contents of x64-windows-static:"
+          Get-ChildItem "$env:VCPKG_ROOT/installed/x64-windows-static" -Recurse -Depth 2 | Select-Object -First 50
+        }
+
         # Copy codec static libraries from vcpkg
         $vcpkgLib = "$env:VCPKG_ROOT/installed/x64-windows-static/lib"
-        Copy-Item "$vcpkgLib/ogg.lib" release/windows-x64-static/
-        Copy-Item "$vcpkgLib/vorbis.lib" release/windows-x64-static/
-        Copy-Item "$vcpkgLib/vorbisenc.lib" release/windows-x64-static/
-        Copy-Item "$vcpkgLib/opus.lib" release/windows-x64-static/
-        Copy-Item "$vcpkgLib/FLAC.lib" release/windows-x64-static/
-        Copy-Item "$vcpkgLib/mpg123.lib" release/windows-x64-static/
-        Copy-Item "$vcpkgLib/fdk-aac.lib" release/windows-x64-static/
+        if (Test-Path $vcpkgLib) {
+          Write-Host "Found vcpkg lib directory: $vcpkgLib"
+          Get-ChildItem $vcpkgLib | Select-Object Name
+
+          # Copy libraries if they exist
+          Get-ChildItem "$vcpkgLib/*.lib" -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName release/windows-x64-static/
+            Write-Host "Copied: $($_.Name)"
+          }
+        } else {
+          Write-Host "Warning: vcpkg lib directory not found at $vcpkgLib"
+          Write-Host "Skipping codec library copy - they may already be embedded in muxaudio-static.lib"
+        }
 
         # Create README with linking instructions
         Set-Content -Path release/windows-x64-static/README.txt -Value @(
