@@ -36,7 +36,7 @@ int main(void)
 	 * Test 1: Invalid codec type
 	 */
 	printf("Test 1: Creating encoder with invalid codec type...\n");
-	enc = mux_encoder_new(999, 44100, 2, NULL, 0);
+	enc = mux_encoder_new(999, 44100, 2, 2, NULL, 0);
 	if (!enc) {
 		printf("✓ Encoder creation failed as expected (returns NULL)\n");
 	} else {
@@ -49,7 +49,7 @@ int main(void)
 	 * Test 2: PCM encoder success - should have no error
 	 */
 	printf("\nTest 2: Creating valid PCM encoder...\n");
-	enc = mux_encoder_new(MUX_CODEC_PCM, 44100, 2, NULL, 0);
+	enc = mux_encoder_new(MUX_CODEC_PCM, 44100, 2, 2, NULL, 0);
 	if (!enc) {
 		printf("✗ Failed to create encoder\n");
 		return 1;
@@ -70,7 +70,7 @@ int main(void)
 	 * Test 3: PCM decoder success - should have no error
 	 */
 	printf("\nTest 3: Creating valid PCM decoder...\n");
-	dec = mux_decoder_new(MUX_CODEC_PCM, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_PCM, 2, NULL, 0);
 	if (!dec) {
 		printf("✗ Failed to create decoder\n");
 		return 1;

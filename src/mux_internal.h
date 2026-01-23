@@ -89,6 +89,7 @@ struct mux_encoder {
 	const struct mux_codec_ops *ops;
 	int sample_rate;
 	int num_channels;
+	int num_streams;  /* 1 = passthrough, 2 = muxed audio + side channel */
 
 	/* Output buffer for multiplexed data */
 	struct mux_buffer output;
@@ -106,6 +107,7 @@ struct mux_encoder {
 struct mux_decoder {
 	enum mux_codec_type codec_type;
 	const struct mux_codec_ops *ops;
+	int num_streams;  /* 1 = passthrough, 2 = muxed audio + side channel */
 
 	/* Output buffers for demultiplexed audio and side channel */
 	struct mux_buffer audio_output;
@@ -161,10 +163,10 @@ int mux_leb128_decode(const uint8_t *input, size_t input_size,
  */
 int mux_leb128_write_frame(struct mux_buffer *output,
 			   const void *payload, size_t payload_size,
-			   int stream_type);
+			   int stream_type, int num_streams);
 int mux_leb128_read_frame(struct mux_buffer *input,
 			  void *payload, size_t payload_capacity,
-			  size_t *payload_size, int *stream_type);
+			  size_t *payload_size, int *stream_type, int num_streams);
 
 /*
  * Codec-specific operations (implemented by each codec)

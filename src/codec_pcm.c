@@ -63,7 +63,7 @@ static int pcm_encoder_encode(struct mux_encoder *enc,
 
 	/* Write LEB128-framed packet to output buffer */
 	ret = mux_leb128_write_frame(&enc->output, input, input_size,
-				     stream_type);
+				     stream_type, enc->num_streams);
 	if (ret != MUX_OK)
 		return ret;
 
@@ -190,7 +190,7 @@ static int pcm_decoder_decode(struct mux_decoder *dec,
 	while (1) {
 		ret = mux_leb128_read_frame(&data->input_buf,
 					    frame_buf, frame_buf_capacity,
-					    &frame_size, &stream_type);
+					    &frame_size, &stream_type, dec->num_streams);
 		if (ret == MUX_ERROR_AGAIN) {
 			/* Need more data */
 			break;
@@ -208,7 +208,7 @@ static int pcm_decoder_decode(struct mux_decoder *dec,
 			/* Try again */
 			ret = mux_leb128_read_frame(&data->input_buf,
 						    frame_buf, frame_buf_capacity,
-						    &frame_size, &stream_type);
+						    &frame_size, &stream_type, dec->num_streams);
 		}
 
 		if (ret != MUX_OK) {

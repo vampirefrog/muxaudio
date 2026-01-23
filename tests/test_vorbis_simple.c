@@ -28,7 +28,7 @@ int main(void)
 	struct mux_param params[] = {
 		{ .name = "quality", .value.f = 0.4f }
 	};
-	enc = mux_encoder_new(MUX_CODEC_VORBIS, 44100, 2, params, 1);
+	enc = mux_encoder_new(MUX_CODEC_VORBIS, 44100, 2, 2, params, 1);
 	if (!enc) {
 		fprintf(stderr, "Failed to create encoder\n");
 		return 1;
@@ -81,7 +81,7 @@ int main(void)
 
 	/* Create decoder */
 	printf("Creating Vorbis decoder...\n");
-	dec = mux_decoder_new(MUX_CODEC_VORBIS, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_VORBIS, 2, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Failed to create decoder\n");
 		return 1;

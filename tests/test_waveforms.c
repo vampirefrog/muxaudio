@@ -38,7 +38,7 @@ static int test_waveform_pcm(const char *name, int16_t *test_signal)
 	}
 
 	/* Create PCM encoder */
-	enc = mux_encoder_new(MUX_CODEC_PCM, SAMPLE_RATE, NUM_CHANNELS, NULL, 0);
+	enc = mux_encoder_new(MUX_CODEC_PCM, SAMPLE_RATE, NUM_CHANNELS, 2, NULL, 0);
 	if (!enc) {
 		fprintf(stderr, "Failed to create encoder\n");
 		free(muxed_buffer);
@@ -78,7 +78,7 @@ static int test_waveform_pcm(const char *name, int16_t *test_signal)
 	mux_encoder_destroy(enc);
 
 	/* Create PCM decoder */
-	dec = mux_decoder_new(MUX_CODEC_PCM, NULL, 0);
+	dec = mux_decoder_new(MUX_CODEC_PCM, 2, NULL, 0);
 	if (!dec) {
 		fprintf(stderr, "Failed to create decoder\n");
 		free(muxed_buffer);

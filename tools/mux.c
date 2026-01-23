@@ -23,6 +23,7 @@ struct encoder_config {
 	enum mux_codec_type codec;
 	int sample_rate;
 	int num_channels;
+	int num_streams;
 	int bitrate;
 	int compression;
 };
@@ -38,6 +39,7 @@ static void usage(const char *prog)
 	fprintf(stderr, "                         Default: flac\n");
 	fprintf(stderr, "  -r, --rate RATE        Sample rate in Hz (default: 44100)\n");
 	fprintf(stderr, "  -n, --channels NUM     Number of channels (default: 2)\n");
+	fprintf(stderr, "  -s, --streams NUM      Number of streams: 1=passthrough, 2=mux (default: 2)\n");
 	fprintf(stderr, "  -b, --bitrate KBPS     Bitrate in kbps for lossy codecs (default: 128)\n");
 	fprintf(stderr, "  -l, --level LEVEL      Compression level 0-8 for FLAC (default: 5)\n");
 	fprintf(stderr, "  -h, --help             Show this help\n");
@@ -78,7 +80,8 @@ static int encode_stream(const struct encoder_config *config)
 
 	/* Create encoder */
 	enc = mux_encoder_new(config->codec, config->sample_rate,
-			      config->num_channels, params, num_params);
+			      config->num_channels, config->num_streams,
+			      params, num_params);
 	if (!enc) {
 		fprintf(stderr, "Error: Failed to create encoder\n");
 		return 1;
@@ -186,6 +189,7 @@ int main(int argc, char **argv)
 		.codec = MUX_CODEC_FLAC,
 		.sample_rate = 44100,
 		.num_channels = 2,
+		.num_streams = 2,
 		.bitrate = 128,
 		.compression = 5
 	};
@@ -194,6 +198,7 @@ int main(int argc, char **argv)
 		{"codec",     required_argument, 0, 'c'},
 		{"rate",      required_argument, 0, 'r'},
 		{"channels",  required_argument, 0, 'n'},
+		{"streams",   required_argument, 0, 's'},
 		{"bitrate",   required_argument, 0, 'b'},
 		{"level",     required_argument, 0, 'l'},
 		{"help",      no_argument,       0, 'h'},
@@ -201,7 +206,7 @@ int main(int argc, char **argv)
 	};
 
 	int opt;
-	while ((opt = getopt_long(argc, argv, "c:r:n:b:l:h", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "c:r:n:s:b:l:h", long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'c':
 			if (mux_codec_from_name(optarg, &config.codec) != MUX_OK) {
@@ -221,6 +226,13 @@ int main(int argc, char **argv)
 			config.num_channels = atoi(optarg);
 			if (config.num_channels <= 0 || config.num_channels > 8) {
 				fprintf(stderr, "Error: Invalid channel count\n");
+				return 1;
+			}
+			break;
+		case 's':
+			config.num_streams = atoi(optarg);
+			if (config.num_streams != 1 && config.num_streams != 2) {
+				fprintf(stderr, "Error: Invalid stream count (must be 1 or 2)\n");
 				return 1;
 			}
 			break;
