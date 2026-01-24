@@ -80,6 +80,8 @@ set(MUXAUDIO_SOURCES
     src/error.c
     src/mux_leb128.c
     src/codec_pcm.c
+    src/codec_alaw.c
+    src/codec_mulaw.c
 )
 
 set(MUXAUDIO_DEFINES "")
@@ -757,6 +759,10 @@ else()
                 add_executable(test_aac_simple tests/test_aac_simple.c)
                 target_link_libraries(test_aac_simple ${MUXAUDIO_LINK_TARGET} m)
             endif()
+
+            # G.711 tests (always available)
+            add_executable(test_g711 tests/test_g711.c)
+            target_link_libraries(test_g711 ${MUXAUDIO_LINK_TARGET} m)
         endif()
     endif()
 

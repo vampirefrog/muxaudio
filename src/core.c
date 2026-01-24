@@ -37,6 +37,16 @@ static const struct mux_codec_info codec_info_table[] = {
 		.type = MUX_CODEC_AAC,
 		.name = "aac",
 		.description = "AAC audio codec"
+	},
+	{
+		.type = MUX_CODEC_ALAW,
+		.name = "alaw",
+		.description = "G.711 A-law codec"
+	},
+	{
+		.type = MUX_CODEC_MULAW,
+		.name = "mulaw",
+		.description = "G.711 mu-law codec"
 	}
 };
 
@@ -66,10 +76,13 @@ static const struct mux_codec_ops *codec_ops_table[MUX_CODEC_MAX] = {
 	[MUX_CODEC_FLAC] = NULL,
 #endif
 #ifdef HAVE_AAC
-	[MUX_CODEC_AAC] = &mux_codec_aac_ops
+	[MUX_CODEC_AAC] = &mux_codec_aac_ops,
 #else
-	[MUX_CODEC_AAC] = NULL
+	[MUX_CODEC_AAC] = NULL,
 #endif
+	/* G.711 codecs - always available (no external dependencies) */
+	[MUX_CODEC_ALAW] = &mux_codec_alaw_ops,
+	[MUX_CODEC_MULAW] = &mux_codec_mulaw_ops
 };
 
 int mux_list_codecs(const struct mux_codec_info **codecs, int *count)
