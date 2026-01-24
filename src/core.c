@@ -47,6 +47,16 @@ static const struct mux_codec_info codec_info_table[] = {
 		.type = MUX_CODEC_MULAW,
 		.name = "mulaw",
 		.description = "G.711 mu-law codec"
+	},
+	{
+		.type = MUX_CODEC_AMR,
+		.name = "amr",
+		.description = "AMR-NB (Adaptive Multi-Rate Narrowband) codec"
+	},
+	{
+		.type = MUX_CODEC_AMR_WB,
+		.name = "amr-wb",
+		.description = "AMR-WB (Adaptive Multi-Rate Wideband) codec"
 	}
 };
 
@@ -82,7 +92,17 @@ static const struct mux_codec_ops *codec_ops_table[MUX_CODEC_MAX] = {
 #endif
 	/* G.711 codecs - always available (no external dependencies) */
 	[MUX_CODEC_ALAW] = &mux_codec_alaw_ops,
-	[MUX_CODEC_MULAW] = &mux_codec_mulaw_ops
+	[MUX_CODEC_MULAW] = &mux_codec_mulaw_ops,
+#ifdef HAVE_AMR
+	[MUX_CODEC_AMR] = &mux_codec_amr_ops,
+#else
+	[MUX_CODEC_AMR] = NULL,
+#endif
+#ifdef HAVE_AMR_WB
+	[MUX_CODEC_AMR_WB] = &mux_codec_amr_wb_ops
+#else
+	[MUX_CODEC_AMR_WB] = NULL
+#endif
 };
 
 int mux_list_codecs(const struct mux_codec_info **codecs, int *count)

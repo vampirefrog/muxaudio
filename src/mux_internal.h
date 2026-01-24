@@ -179,5 +179,7 @@ extern const struct mux_codec_ops mux_codec_mp3_ops;
 extern const struct mux_codec_ops mux_codec_aac_ops;
 extern const struct mux_codec_ops mux_codec_alaw_ops;
 extern const struct mux_codec_ops mux_codec_mulaw_ops;
+extern const struct mux_codec_ops mux_codec_amr_ops;
+extern const struct mux_codec_ops mux_codec_amr_wb_ops;
 
 #endif /* MUX_INTERNAL_H */
