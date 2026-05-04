@@ -50,8 +50,27 @@ static const char *mpg123_error_string(mpg123_handle *mh)
  */
 struct mp3_encoder_data {
 	lame_global_flags *gfp;
-	uint8_t mp3_buffer[8192];  /* Buffer for encoded MP3 frames */
+	uint8_t *mp3_buffer;     /* Dynamic buffer for encoded MP3 frames */
+	size_t mp3_buffer_size;  /* Allocated capacity */
 };
+
+/*
+ * Per LAME docs, the worst-case output for lame_encode_buffer is
+ *   1.25 * num_samples + 7200 bytes
+ * (see libmp3lame/lame.h). Grow our scratch buffer to fit the call.
+ */
+static int mp3_ensure_buffer(struct mp3_encoder_data *data, size_t num_samples)
+{
+	size_t needed = (num_samples * 5 + 3) / 4 + 7200;  /* ceil(1.25 * n) + 7200 */
+	if (needed <= data->mp3_buffer_size) return 0;
+	size_t grown = data->mp3_buffer_size ? data->mp3_buffer_size : 16384;
+	while (grown < needed) grown *= 2;
+	uint8_t *p = realloc(data->mp3_buffer, grown);
+	if (!p) return -1;
+	data->mp3_buffer = p;
+	data->mp3_buffer_size = grown;
+	return 0;
+}
 #endif
 
 #ifdef HAVE_MP3_DECODE
@@ -192,6 +211,7 @@ static void mp3_encoder_deinit(struct mux_encoder *enc)
 	data = enc->codec_data;
 	if (data->gfp)
 		lame_close(data->gfp);
+	free(data->mp3_buffer);
 	free(data);
 	enc->codec_data = NULL;
 }
@@ -238,18 +258,25 @@ static int mp3_encoder_encode(struct mux_encoder *enc,
 	size_t num_samples = input_size / sizeof(int16_t) / enc->num_channels;
 	int mp3_bytes;
 
+	if (mp3_ensure_buffer(data, num_samples) < 0) {
+		mux_encoder_set_error(enc, MUX_ERROR_NOMEM,
+				      "Failed to grow MP3 output buffer",
+				      NULL, 0, NULL);
+		return MUX_ERROR_NOMEM;
+	}
+
 	if (enc->num_channels == 1) {
 		mp3_bytes = lame_encode_buffer(data->gfp,
 					       pcm, NULL,
 					       num_samples,
 					       data->mp3_buffer,
-					       sizeof(data->mp3_buffer));
+					       data->mp3_buffer_size);
 	} else {
 		mp3_bytes = lame_encode_buffer_interleaved(data->gfp,
 							   (short *)pcm,
 							   num_samples,
 							   data->mp3_buffer,
-							   sizeof(data->mp3_buffer));
+							   data->mp3_buffer_size);
 	}
 
 	if (mp3_bytes < 0) {
@@ -315,10 +342,17 @@ static int mp3_encoder_finalize(struct mux_encoder *enc)
 	if (!data)
 		return MUX_ERROR_INVAL;
 
-	/* Flush LAME encoder */
+	/* Flush LAME encoder. lame_encode_flush itself can produce up to a few
+	 * KB; ensure we have at least 7200 bytes (LAME's recommended floor). */
+	if (mp3_ensure_buffer(data, 0) < 0) {
+		mux_encoder_set_error(enc, MUX_ERROR_NOMEM,
+				      "Failed to grow MP3 output buffer",
+				      NULL, 0, NULL);
+		return MUX_ERROR_NOMEM;
+	}
 	mp3_bytes = lame_encode_flush(data->gfp,
 				      data->mp3_buffer,
-				      sizeof(data->mp3_buffer));
+				      data->mp3_buffer_size);
 
 	if (mp3_bytes < 0) {
 		const char *err_msg = lame_encode_error_string(mp3_bytes);
