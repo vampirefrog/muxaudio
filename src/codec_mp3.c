@@ -482,7 +482,12 @@ static int mp3_decoder_decode(struct mux_decoder *dec,
 			      size_t *input_consumed)
 {
 	struct mp3_decoder_data *data;
-	uint8_t frame_buf[8192];
+	/* Encoders may pack multiple mp3 frames into a single leb128 payload
+	 * (e.g. lame_encode_buffer's output for one large PCM chunk); 64KB is
+	 * comfortable for ~700ms of mp3 audio and avoids dynamic allocation
+	 * here. mux_leb128_read_frame returns MUX_ERROR_INVAL if any single
+	 * payload exceeds this. */
+	uint8_t frame_buf[65536];
 	size_t frame_size;
 	int stream_type;
 	int ret;
