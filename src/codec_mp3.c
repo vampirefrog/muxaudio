@@ -9,7 +9,7 @@
 #include <lame/lame.h>
 #endif
 
-#ifdef HAVE_MP3_DECODE
+#ifdef HAVE_MP3_USE_MPG123
 #include <mpg123.h>
 #endif
 
@@ -36,7 +36,7 @@ static const char *lame_encode_error_string(int lame_ret)
 }
 #endif
 
-#ifdef HAVE_MP3_DECODE
+#ifdef HAVE_MP3_USE_MPG123
 static const char *mpg123_error_string(mpg123_handle *mh)
 {
 	const char *err = mpg123_plain_strerror(mpg123_errcode(mh));
@@ -78,7 +78,9 @@ static int mp3_ensure_buffer(struct mp3_encoder_data *data, size_t num_samples)
  * MP3 decoder state
  */
 struct mp3_decoder_data {
+#ifdef HAVE_MP3_USE_MPG123
 	mpg123_handle *mh;  /* mpg123 decoder handle */
+#endif
 	struct mux_buffer input_buf;  /* Buffer for muxed input */
 };
 #endif
@@ -388,7 +390,9 @@ static int mp3_decoder_init(struct mux_decoder *dec,
 
 	(void)params;
 	(void)num_params;
+	(void)err;
 
+#ifdef HAVE_MP3_USE_MPG123
 	/* Initialize mpg123 library (once per process) */
 	static int mpg123_inited = 0;
 	if (!mpg123_inited) {
@@ -400,6 +404,7 @@ static int mp3_decoder_init(struct mux_decoder *dec,
 		}
 		mpg123_inited = 1;
 	}
+#endif
 
 	data = calloc(1, sizeof(*data));
 	if (!data) {
@@ -409,6 +414,7 @@ static int mp3_decoder_init(struct mux_decoder *dec,
 		return MUX_ERROR_NOMEM;
 	}
 
+#ifdef HAVE_MP3_USE_MPG123
 	/* Create mpg123 decoder handle */
 	data->mh = mpg123_new(NULL, &err);
 	if (!data->mh) {
@@ -428,13 +434,16 @@ static int mp3_decoder_init(struct mux_decoder *dec,
 		free(data);
 		return MUX_ERROR_INIT;
 	}
+#endif
 
 	/* Allocate input buffer for demuxing */
 	if (mux_buffer_init(&data->input_buf, 4096) != MUX_OK) {
 		mux_decoder_set_error(dec, MUX_ERROR_NOMEM,
 				      "Failed to allocate input buffer",
 				      NULL, 0, NULL);
+#ifdef HAVE_MP3_USE_MPG123
 		mpg123_delete(data->mh);
+#endif
 		free(data);
 		return MUX_ERROR_NOMEM;
 	}
@@ -454,8 +463,10 @@ static void mp3_decoder_deinit(struct mux_decoder *dec)
 		return;
 
 	data = dec->codec_data;
+#ifdef HAVE_MP3_USE_MPG123
 	if (data->mh)
 		mpg123_delete(data->mh);
+#endif
 	mux_buffer_deinit(&data->input_buf);
 	free(data);
 	dec->codec_data = NULL;
@@ -516,6 +527,7 @@ static int mp3_decoder_decode(struct mux_decoder *dec,
 			continue;
 		}
 
+#ifdef HAVE_MP3_USE_MPG123
 		/* Feed MP3 data to mpg123 */
 		ret = mpg123_feed(data->mh, frame_buf, frame_size);
 		if (ret != MPG123_OK && ret != MPG123_NEED_MORE) {
@@ -564,6 +576,14 @@ static int mp3_decoder_decode(struct mux_decoder *dec,
 				return MUX_ERROR_DECODE;
 			}
 		}
+#else
+		/* Passthrough mode (no mpg123): emit raw MP3 frame bytes on the
+		 * audio stream. The caller is expected to feed them into a
+		 * separate MP3 decoder (e.g. the browser's native audio path). */
+		ret = mux_buffer_write(&dec->audio_output, frame_buf, frame_size);
+		if (ret != MUX_OK)
+			return ret;
+#endif
 	}
 
 	*input_consumed = consumed;
@@ -614,13 +634,12 @@ static int mp3_decoder_read(struct mux_decoder *dec,
  */
 static int mp3_decoder_finalize(struct mux_decoder *dec)
 {
-	struct mp3_decoder_data *data;
-	int ret;
-
 	if (!dec)
 		return MUX_ERROR_INVAL;
 
-	data = dec->codec_data;
+#ifdef HAVE_MP3_USE_MPG123
+	struct mp3_decoder_data *data = dec->codec_data;
+	int ret;
 	if (!data || !data->mh)
 		return MUX_ERROR_INVAL;
 
@@ -672,6 +691,7 @@ static int mp3_decoder_finalize(struct mux_decoder *dec)
 			return MUX_ERROR_DECODE;
 		}
 	}
+#endif
 
 	return MUX_OK;
 }
