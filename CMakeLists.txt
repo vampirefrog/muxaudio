@@ -405,43 +405,25 @@ if(CODEC_MP3)
     set(MP3_ENABLED FALSE)
 
     # MP3 Decoding
+    #
+    # Two modes:
+    #   * HAVE_MP3_DECODE + HAVE_MP3_USE_MPG123 → full PCM decode via libmpg123
+    #     (used on native targets where libmpg123 is available)
+    #   * HAVE_MP3_DECODE alone                 → passthrough demux: leb128
+    #     frames are split into audio (raw mp3 frames) + side channel, no
+    #     audio decode. Lets browsers decode the mp3 frames via the native
+    #     audio path while we still pull events out via WASM, and avoids
+    #     having to build mpg123 in environments where its autotools build
+    #     can't run (e.g. emscripten on Windows).
     if(CODEC_MP3_DECODE)
         if(IS_WASM)
-            message(STATUS "Enabling MP3 decoding (bundled mpg123 from SourceForge)")
-
-            # mpg123 uses autotools, so we use ExternalProject to build it
-            include(ExternalProject)
-
-            ExternalProject_Add(
-                mpg123_external
-                URL https://downloads.sourceforge.net/project/mpg123/mpg123/1.32.3/mpg123-1.32.3.tar.bz2
-                CONFIGURE_COMMAND emconfigure <SOURCE_DIR>/configure
-                    --prefix=<INSTALL_DIR>
-                    --disable-shared
-                    --enable-static
-                    --with-cpu=generic
-                BUILD_COMMAND emmake make -j4
-                INSTALL_COMMAND emmake make install
-                BUILD_IN_SOURCE 0
-            )
-
-            ExternalProject_Get_Property(mpg123_external INSTALL_DIR)
-
-            # Create imported library target
-            add_library(mpg123 STATIC IMPORTED)
-            set_target_properties(mpg123 PROPERTIES
-                IMPORTED_LOCATION "${INSTALL_DIR}/lib/libmpg123.a"
-            )
-            add_dependencies(mpg123 mpg123_external)
-
+            message(STATUS "Enabling MP3 decoding (passthrough demux; browser decodes audio)")
             list(APPEND MUXAUDIO_DEFINES -DHAVE_MP3_DECODE)
-            list(APPEND MUXAUDIO_LIBRARIES mpg123)
-            list(APPEND MUXAUDIO_INCLUDES "${INSTALL_DIR}/include")
             set(MP3_ENABLED TRUE)
         else()
             if(MPG123_FOUND)
                 message(STATUS "Enabling MP3 decoding (system mpg123)")
-                list(APPEND MUXAUDIO_DEFINES -DHAVE_MP3_DECODE)
+                list(APPEND MUXAUDIO_DEFINES -DHAVE_MP3_DECODE -DHAVE_MP3_USE_MPG123)
                 list(APPEND MUXAUDIO_LIBRARIES ${MPG123_LIBRARIES})
                 if(MPG123_INCLUDE_DIRS)
                     list(APPEND MUXAUDIO_INCLUDES ${MPG123_INCLUDE_DIRS})
