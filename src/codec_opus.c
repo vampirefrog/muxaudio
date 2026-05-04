@@ -33,6 +33,13 @@ struct opus_encoder_data {
 
 	/* Frame size in samples */
 	int frame_size;
+
+	/* Carry-over for samples that don't yet form a full frame. Opus only
+	 * accepts whole frames at a time; without this we'd silently drop the
+	 * tail of every encode() call and starve the output. */
+	int16_t *pending;
+	size_t pending_samples;       /* samples currently buffered */
+	size_t pending_capacity;      /* allocated samples */
 };
 
 /*
@@ -161,7 +168,8 @@ static int pageout_ogg_stream(struct mux_buffer *output, ogg_stream_state *os)
 /*
  * Write OpusHead header packet
  */
-static int write_opus_header(ogg_stream_state *os, int sample_rate, int channels)
+static int write_opus_header(ogg_stream_state *os, int sample_rate, int channels,
+                             int pre_skip)
 {
 	unsigned char header[19];
 	ogg_packet op;
@@ -170,7 +178,8 @@ static int write_opus_header(ogg_stream_state *os, int sample_rate, int channels
 	memcpy(header, "OpusHead", 8);
 	header[8] = 1;                    /* Version */
 	header[9] = channels;             /* Channel count */
-	header[10] = 0; header[11] = 0;   /* Pre-skip (little-endian) */
+	header[10] = pre_skip & 0xFF;     /* Pre-skip (little-endian) */
+	header[11] = (pre_skip >> 8) & 0xFF;
 	/* Input sample rate (little-endian) */
 	header[12] = (sample_rate >> 0) & 0xFF;
 	header[13] = (sample_rate >> 8) & 0xFF;
@@ -292,6 +301,13 @@ static int mux_opus_encoder_init(struct mux_encoder *enc,
 	opus_encoder_ctl(data->enc, OPUS_SET_COMPLEXITY(complexity));
 	opus_encoder_ctl(data->enc, OPUS_SET_VBR(vbr));
 
+	/* Query the encoder lookahead so OpusHead.pre_skip is accurate. The
+	 * value is in samples at the input rate; OpusHead.pre_skip is in
+	 * 48 kHz samples per the spec. */
+	opus_int32 lookahead = 0;
+	opus_encoder_ctl(data->enc, OPUS_GET_LOOKAHEAD(&lookahead));
+	int pre_skip = (int)((int64_t)lookahead * 48000 / sample_rate);
+
 	/* Initialize OGG stream for audio (serial number 1) */
 	ret = ogg_stream_init(&data->os_audio, 1);
 	if (ret != 0) {
@@ -304,7 +320,7 @@ static int mux_opus_encoder_init(struct mux_encoder *enc,
 	}
 
 	/* Write Opus headers */
-	write_opus_header(&data->os_audio, sample_rate, num_channels);
+	write_opus_header(&data->os_audio, sample_rate, num_channels, pre_skip);
 	write_opus_tags(&data->os_audio);
 
 	/* Flush headers to output */
@@ -343,6 +359,7 @@ static void mux_opus_encoder_deinit(struct mux_encoder *enc)
 	if (data->enc)
 		opus_encoder_destroy(data->enc);
 
+	free(data->pending);
 	free(data);
 	enc->codec_data = NULL;
 }
@@ -416,18 +433,39 @@ static int mux_opus_encoder_encode(struct mux_encoder *enc,
 		return MUX_OK;
 	}
 
-	/* Audio data: encode with Opus */
+	/* Audio data: encode with Opus.
+	 * Append the new samples to any leftover from previous calls, then peel
+	 * off whole frames. Whatever doesn't form a complete frame stays buffered
+	 * for next time so we never drop tail samples. */
 	const int16_t *pcm = input;
-	size_t num_samples = input_size / sizeof(int16_t) / data->num_channels;
+	size_t in_samples = input_size / sizeof(int16_t) / data->num_channels;
 
-	/* Process in frame_size chunks */
+	size_t needed = data->pending_samples + in_samples;
+	if (needed > data->pending_capacity) {
+		size_t cap = data->pending_capacity ? data->pending_capacity : (size_t)data->frame_size * 4;
+		while (cap < needed) cap *= 2;
+		int16_t *p = realloc(data->pending, cap * data->num_channels * sizeof(int16_t));
+		if (!p) {
+			mux_encoder_set_error(enc, MUX_ERROR_NOMEM,
+					      "Failed to grow opus pending buffer",
+					      NULL, 0, NULL);
+			return MUX_ERROR_NOMEM;
+		}
+		data->pending = p;
+		data->pending_capacity = cap;
+	}
+	memcpy(data->pending + data->pending_samples * data->num_channels,
+	       pcm,
+	       in_samples * data->num_channels * sizeof(int16_t));
+	data->pending_samples += in_samples;
+
 	size_t samples_consumed = 0;
-	while (samples_consumed + data->frame_size <= num_samples) {
+	while (samples_consumed + (size_t)data->frame_size <= data->pending_samples) {
 		unsigned char opus_packet[4000];
 		int opus_len;
 
 		opus_len = opus_encode(data->enc,
-				       pcm + (samples_consumed * data->num_channels),
+				       data->pending + (samples_consumed * data->num_channels),
 				       data->frame_size,
 				       opus_packet,
 				       sizeof(opus_packet));
@@ -462,7 +500,19 @@ static int mux_opus_encoder_encode(struct mux_encoder *enc,
 		samples_consumed += data->frame_size;
 	}
 
-	*input_consumed = samples_consumed * data->num_channels * sizeof(int16_t);
+	/* Slide remaining (unaligned) samples to the start of the pending buffer. */
+	size_t leftover = data->pending_samples - samples_consumed;
+	if (leftover > 0 && samples_consumed > 0) {
+		memmove(data->pending,
+		        data->pending + samples_consumed * data->num_channels,
+		        leftover * data->num_channels * sizeof(int16_t));
+	}
+	data->pending_samples = leftover;
+
+	/* We accepted the entire input — even tail samples that didn't form a
+	 * full frame are now sitting in the pending buffer waiting for the next
+	 * call (or finalize). */
+	*input_consumed = input_size;
 	return MUX_OK;
 }
 
@@ -507,6 +557,33 @@ static int mux_opus_encoder_finalize(struct mux_encoder *enc)
 	data = enc->codec_data;
 	if (!data)
 		return MUX_ERROR_INVAL;
+
+	/* Encode any pending tail samples by zero-padding to a full frame so we
+	 * don't lose the last < frame_size samples. The decoder's pre_skip /
+	 * stream end already trim trailing silence. */
+	if (data->pending_samples > 0) {
+		int16_t *frame = calloc(data->frame_size,
+		                        data->num_channels * sizeof(int16_t));
+		if (!frame) return MUX_ERROR_NOMEM;
+		memcpy(frame, data->pending,
+		       data->pending_samples * data->num_channels * sizeof(int16_t));
+
+		unsigned char opus_packet[4000];
+		int opus_len = opus_encode(data->enc, frame, data->frame_size,
+		                           opus_packet, sizeof(opus_packet));
+		free(frame);
+		if (opus_len > 0) {
+			ogg_packet ap;
+			memset(&ap, 0, sizeof(ap));
+			ap.packet = opus_packet;
+			ap.bytes = opus_len;
+			data->granule_pos += data->frame_size;
+			ap.granulepos = data->granule_pos;
+			ap.packetno = data->packet_count++;
+			ogg_stream_packetin(&data->os_audio, &ap);
+		}
+		data->pending_samples = 0;
+	}
 
 	/* Mark audio stream as ended */
 	ogg_packet op;
