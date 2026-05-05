@@ -28,6 +28,18 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
+    # vcpkg's GHA binary cache backend (enabled by default in lukka/run-vcpkg)
+    # needs ACTIONS_CACHE_URL + ACTIONS_RUNTIME_TOKEN exported from the
+    # actions runtime; without these, `vcpkg install` aborts with
+    # "The GHA binary source requires the ACTIONS_RUNTIME_TOKEN and
+    # ACTIONS_CACHE_URL environment variables to be set."
+    - name: Export GitHub Actions cache environment variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
 
