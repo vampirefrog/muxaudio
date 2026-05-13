@@ -99,7 +99,7 @@ static int decode_stream(const struct decoder_config *config)
 		while (1) {
 			ret = mux_decoder_read(dec, output_buffer, sizeof(output_buffer),
 					       &written, &stream_type);
-			if (ret == MUX_ERROR_AGAIN || written == 0)
+			if (written == 0)
 				break;
 			if (ret != MUX_OK) {
 				fprintf(stderr, "Error: Failed to read decoder output\n");

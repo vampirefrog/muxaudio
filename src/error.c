@@ -11,7 +11,6 @@ static const char *error_strings[] = {
 	[-MUX_ERROR] = "Generic error",
 	[-MUX_ERROR_NOMEM] = "Out of memory",
 	[-MUX_ERROR_INVAL] = "Invalid argument",
-	[-MUX_ERROR_AGAIN] = "Need more data",
 	[-MUX_ERROR_NOCODEC] = "Codec not available",
 	[-MUX_ERROR_EOF] = "End of file",
 	[-MUX_ERROR_ENCODE] = "Encoding error",

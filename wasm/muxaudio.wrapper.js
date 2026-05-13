@@ -169,10 +169,6 @@ export class MuxEncoder {
     _free(outputPtr);
     _free(writtenPtr);
 
-    if (result === -4) { // MUX_ERROR_AGAIN - no data available
-      return new Uint8Array(0);
-    }
-
     throw new Error(`Read failed: error code ${result}`);
   }
 
@@ -263,7 +259,7 @@ export class MuxDecoder {
     _free(inputPtr);
     _free(consumedPtr);
 
-    if (result !== 0 && result !== -6) { // MUX_ERROR_EOF (-6) is ok
+    if (result !== 0 && result !== -5) { // MUX_ERROR_EOF (-5) is ok
       throw new Error(`Decode failed: error code ${result}`);
     }
   }
@@ -308,16 +304,12 @@ export class MuxDecoder {
     _free(writtenPtr);
     _free(streamTypePtr);
 
-    if (result === -4) { // MUX_ERROR_AGAIN
-      return { data: new Uint8Array(0), streamType: STREAM_AUDIO };
-    }
-
     throw new Error(`Read failed: error code ${result}`);
   }
 
   finalize() {
     const result = this._finalize(this.decoder);
-    if (result !== 0 && result !== -6) { // MUX_ERROR_EOF is ok
+    if (result !== 0 && result !== -5) { // MUX_ERROR_EOF is ok
       throw new Error(`Finalize failed: error code ${result}`);
     }
 

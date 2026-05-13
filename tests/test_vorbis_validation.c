@@ -101,8 +101,6 @@ static int test_waveform(const char *name, int16_t *test_signal,
 				       muxed_buffer + total_muxed,
 				       muxed_capacity - total_muxed,
 				       &output_written);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK)
 			break;
 		if (output_written == 0)
@@ -192,8 +190,6 @@ static int test_waveform(const char *name, int16_t *test_signal,
 				       requested,
 				       &output_written,
 				       &stream_type);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK)
 			break;
 		if (output_written == 0)

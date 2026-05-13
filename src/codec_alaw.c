@@ -293,10 +293,7 @@ static int alaw_decoder_decode(struct mux_decoder *dec,
 		ret = mux_leb128_read_frame(&data->input_buf,
 					    frame_buf, frame_buf_capacity,
 					    &frame_size, &stream_type, dec->num_streams);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
-
-		if (ret == MUX_ERROR_INVAL && frame_size > frame_buf_capacity) {
+			if (ret == MUX_ERROR_INVAL && frame_size > frame_buf_capacity) {
 			uint8_t *new_buf = realloc(frame_buf, frame_size);
 			if (!new_buf) {
 				free(frame_buf);
@@ -313,6 +310,11 @@ static int alaw_decoder_decode(struct mux_decoder *dec,
 		if (ret != MUX_OK) {
 			free(frame_buf);
 			return ret;
+		}
+
+		if (stream_type < 0) {
+			/* No complete frame yet, wait for more input */
+			break;
 		}
 
 		if (stream_type == MUX_STREAM_AUDIO) {
@@ -363,7 +365,9 @@ static int alaw_decoder_read(struct mux_decoder *dec,
 
 	ret = mux_buffer_read(&dec->audio_output, output, output_size,
 			      &bytes_read);
-	if (ret == MUX_OK) {
+	if (ret != MUX_OK)
+		return ret;
+	if (bytes_read > 0) {
 		*output_written = bytes_read;
 		*stream_type = MUX_STREAM_AUDIO;
 		return MUX_OK;
@@ -371,14 +375,16 @@ static int alaw_decoder_read(struct mux_decoder *dec,
 
 	ret = mux_buffer_read(&dec->side_output, output, output_size,
 			      &bytes_read);
-	if (ret == MUX_OK) {
+	if (ret != MUX_OK)
+		return ret;
+	if (bytes_read > 0) {
 		*output_written = bytes_read;
 		*stream_type = MUX_STREAM_SIDE_CHANNEL;
 		return MUX_OK;
 	}
 
 	*output_written = 0;
-	return MUX_ERROR_AGAIN;
+	return MUX_OK;
 }
 
 /*

@@ -594,15 +594,16 @@ static int mux_flac_decoder_decode(struct mux_decoder *dec,
 		ret = mux_leb128_read_frame(&data->leb128_input_buf,
 					    frame_buf, sizeof(frame_buf),
 					    &frame_size, &stream_type, dec->num_streams);
-		if (ret == MUX_ERROR_AGAIN) {
-			/* Need more data */
-			break;
-		}
 		if (ret != MUX_OK) {
 			mux_decoder_set_error(dec, MUX_ERROR_FORMAT,
 					      "Failed to read LEB128 frame",
 					      NULL, 0, NULL);
 			return ret;
+		}
+
+		if (stream_type < 0) {
+			/* No complete frame yet, wait for more input */
+			break;
 		}
 
 		/* Side channel passes through */
@@ -659,7 +660,9 @@ static int mux_flac_decoder_read(struct mux_decoder *dec,
 	/* Try audio buffer first */
 	ret = mux_buffer_read(&dec->audio_output, output, output_size,
 			      &bytes_read);
-	if (ret == MUX_OK) {
+	if (ret != MUX_OK)
+		return ret;
+	if (bytes_read > 0) {
 		*output_written = bytes_read;
 		*stream_type = MUX_STREAM_AUDIO;
 		return MUX_OK;
@@ -668,7 +671,9 @@ static int mux_flac_decoder_read(struct mux_decoder *dec,
 	/* Try side channel buffer */
 	ret = mux_buffer_read(&dec->side_output, output, output_size,
 			      &bytes_read);
-	if (ret == MUX_OK) {
+	if (ret != MUX_OK)
+		return ret;
+	if (bytes_read > 0) {
 		*output_written = bytes_read;
 		*stream_type = MUX_STREAM_SIDE_CHANNEL;
 		return MUX_OK;
@@ -676,7 +681,7 @@ static int mux_flac_decoder_read(struct mux_decoder *dec,
 
 	/* No data available */
 	*output_written = 0;
-	return MUX_ERROR_AGAIN;
+	return MUX_OK;
 }
 
 /*

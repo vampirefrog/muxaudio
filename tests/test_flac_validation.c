@@ -163,7 +163,7 @@ static int test_waveform_config(const char *name, int16_t *test_signal,
 				       muxed_buffer + total_muxed,
 				       muxed_capacity - total_muxed,
 				       &output_written);
-		if (ret == MUX_ERROR_AGAIN || output_written == 0)
+		if (output_written == 0)
 			break;
 		if (ret != MUX_OK)
 			break;
@@ -219,7 +219,7 @@ static int test_waveform_config(const char *name, int16_t *test_signal,
 				       (decoded_capacity - total_decoded) * sizeof(int16_t),
 				       &output_written,
 				       &stream_type);
-		if (ret == MUX_ERROR_AGAIN || output_written == 0)
+		if (output_written == 0)
 			break;
 		if (ret != MUX_OK)
 			break;
@@ -374,7 +374,7 @@ static int test_sample_rates(void)
 			ret = mux_encoder_read(enc, muxed_buffer + total_muxed,
 					       muxed_capacity - total_muxed,
 					       &output_written);
-			if (ret == MUX_ERROR_AGAIN || output_written == 0)
+			if (output_written == 0)
 				break;
 			total_muxed += output_written;
 		}
@@ -401,7 +401,7 @@ static int test_sample_rates(void)
 			ret = mux_decoder_read(dec, decoded_audio + total_decoded,
 					       (decoded_capacity - total_decoded) * sizeof(int16_t),
 					       &output_written, &stream_type);
-			if (ret == MUX_ERROR_AGAIN || output_written == 0)
+			if (output_written == 0)
 				break;
 			if (stream_type == MUX_STREAM_AUDIO)
 				total_decoded += output_written / sizeof(int16_t);

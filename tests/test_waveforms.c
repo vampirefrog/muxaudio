@@ -63,8 +63,6 @@ static int test_waveform_pcm(const char *name, int16_t *test_signal)
 		ret = mux_encoder_read(enc, muxed_buffer + total_muxed,
 				       muxed_capacity - total_muxed,
 				       &output_written);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK)
 			break;
 		if (output_written == 0)
@@ -102,8 +100,6 @@ static int test_waveform_pcm(const char *name, int16_t *test_signal)
 		ret = mux_decoder_read(dec, decoded_audio + total_decoded,
 				       (decoded_capacity - total_decoded) * sizeof(int16_t),
 				       &output_written, &stream_type);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK)
 			break;
 		if (output_written == 0)

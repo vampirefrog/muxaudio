@@ -49,13 +49,12 @@ enum mux_param_type {
 #define MUX_ERROR          -1
 #define MUX_ERROR_NOMEM    -2
 #define MUX_ERROR_INVAL    -3
-#define MUX_ERROR_AGAIN    -4  /* Need more input or output buffer full */
-#define MUX_ERROR_NOCODEC  -5
-#define MUX_ERROR_EOF      -6
-#define MUX_ERROR_ENCODE   -7  /* Encoding error */
-#define MUX_ERROR_DECODE   -8  /* Decoding error */
-#define MUX_ERROR_FORMAT   -9  /* Format/container error */
-#define MUX_ERROR_INIT     -10 /* Initialization error */
+#define MUX_ERROR_NOCODEC  -4
+#define MUX_ERROR_EOF      -5
+#define MUX_ERROR_ENCODE   -6  /* Encoding error */
+#define MUX_ERROR_DECODE   -7  /* Decoding error */
+#define MUX_ERROR_FORMAT   -8  /* Format/container error */
+#define MUX_ERROR_INIT     -9  /* Initialization error */
 
 /*
  * Error information structure

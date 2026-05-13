@@ -74,8 +74,6 @@ int main(void)
 		ret = mux_encoder_read(enc, muxed_buffer + total_muxed,
 				       sizeof(muxed_buffer) - total_muxed,
 				       &output_written);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK)
 			break;
 		if (output_written == 0)
@@ -123,8 +121,6 @@ int main(void)
 		ret = mux_decoder_read(dec, pcm_output + total_decoded / sizeof(int16_t),
 				       sizeof(pcm_output) - total_decoded,
 				       &output_written, &stream_type);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK)
 			break;
 		if (output_written == 0)
