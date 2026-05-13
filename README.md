@@ -131,7 +131,6 @@ struct mux_error_info {
 #define MUX_ERROR_DECODE  5   // Decoding error
 #define MUX_ERROR_FORMAT  6   // Format error
 #define MUX_ERROR_NOCODEC 7   // Codec not available
-#define MUX_ERROR_AGAIN   8   // Try again (need more data)
 ```
 
 ---
@@ -349,7 +348,7 @@ int mux_encoder_read(struct mux_encoder *enc,
                      size_t *output_written);
 ```
 
-**Returns**: `MUX_OK` on success, `MUX_ERROR_AGAIN` if no data available
+**Returns**: `MUX_OK`. If no data is currently available, `*output_written` is 0.
 **Example**:
 ```c
 uint8_t buffer[4096];
@@ -467,7 +466,7 @@ int mux_decoder_read(struct mux_decoder *dec,
                      int *stream_type);
 ```
 
-**Returns**: `MUX_OK` on success, `MUX_ERROR_AGAIN` if no data available
+**Returns**: `MUX_OK`. If no data is currently available, `*output_written` is 0.
 **Parameters**:
 - `stream_type`: Receives `MUX_STREAM_AUDIO` or `MUX_STREAM_SIDE_CHANNEL`
 

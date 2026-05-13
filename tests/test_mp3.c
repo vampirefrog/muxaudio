@@ -119,8 +119,6 @@ int main(void)
 				       muxed_buffer + total_muxed,
 				       sizeof(muxed_buffer) - total_muxed,
 				       &output_written);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK) {
 			fprintf(stderr, "Failed to read encoder output: %d\n", ret);
 			return 1;
@@ -169,12 +167,12 @@ int main(void)
 	while (1) {
 		ret = mux_decoder_read(dec, temp_buffer, sizeof(temp_buffer),
 				       &output_written, &stream_type);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK) {
 			fprintf(stderr, "Failed to read decoded data: %d\n", ret);
 			return 1;
 		}
+		if (output_written == 0)
+			break;
 
 		if (stream_type == MUX_STREAM_AUDIO) {
 			if (total_pcm_out + output_written <= sizeof(pcm_output)) {

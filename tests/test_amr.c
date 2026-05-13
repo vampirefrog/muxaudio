@@ -137,8 +137,6 @@ static int test_amr_nb(void)
 		ret = mux_decoder_read(dec, output_samples + decoded_size / sizeof(int16_t),
 				       num_samples * 2 * sizeof(int16_t) - decoded_size,
 				       &chunk, &stream_type);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK) {
 			fprintf(stderr, "  FAIL: Decoder read failed with error %d\n", ret);
 			mux_decoder_destroy(dec);
@@ -314,8 +312,6 @@ static int test_amr_wb(void)
 		ret = mux_decoder_read(dec, output_samples + decoded_size / sizeof(int16_t),
 				       num_samples * 2 * sizeof(int16_t) - decoded_size,
 				       &chunk, &stream_type);
-		if (ret == MUX_ERROR_AGAIN)
-			break;
 		if (ret != MUX_OK) {
 			fprintf(stderr, "  FAIL: Decoder read failed with error %d\n", ret);
 			mux_decoder_destroy(dec);

@@ -135,7 +135,7 @@ static int encode_stream(const struct encoder_config *config)
 		while (1) {
 			ret = mux_encoder_read(enc, output_buffer, sizeof(output_buffer),
 					       &written);
-			if (ret == MUX_ERROR_AGAIN || written == 0)
+			if (written == 0)
 				break;
 			if (ret != MUX_OK) {
 				fprintf(stderr, "Error: Failed to read encoder output\n");
@@ -164,7 +164,7 @@ static int encode_stream(const struct encoder_config *config)
 	while (1) {
 		ret = mux_encoder_read(enc, output_buffer, sizeof(output_buffer),
 				       &written);
-		if (ret == MUX_ERROR_AGAIN || written == 0)
+		if (written == 0)
 			break;
 		if (ret != MUX_OK) {
 			fprintf(stderr, "Error: Failed to read encoder output\n");

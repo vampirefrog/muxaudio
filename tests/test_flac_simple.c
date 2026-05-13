@@ -67,7 +67,7 @@ int main(void)
 		ret = mux_encoder_read(enc, muxed_buffer + total_muxed,
 				       sizeof(muxed_buffer) - total_muxed,
 				       &output_written);
-		if (ret == MUX_ERROR_AGAIN || output_written == 0)
+		if (output_written == 0)
 			break;
 		if (ret != MUX_OK) {
 			fprintf(stderr, "Read failed\n");
@@ -120,7 +120,7 @@ int main(void)
 		ret = mux_decoder_read(dec, pcm_output + total_decoded,
 				       sizeof(pcm_output) - total_decoded,
 				       &output_written, &stream_type);
-		if (ret == MUX_ERROR_AGAIN || output_written == 0)
+		if (output_written == 0)
 			break;
 		if (ret != MUX_OK) {
 			fprintf(stderr, "Decoder read failed\n");

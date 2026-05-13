@@ -87,7 +87,7 @@ int mux_buffer_read(struct mux_buffer *buf, void *data, size_t size,
 	available = buf->size - buf->read_pos;
 	if (available == 0) {
 		*bytes_read = 0;
-		return MUX_ERROR_AGAIN;
+		return MUX_OK;
 	}
 
 	if (size > available)
