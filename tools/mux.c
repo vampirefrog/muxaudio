@@ -2,10 +2,8 @@
 /*
  * mux - Encode audio from stdin with side channel data from fd 3
  *
- * Usage: mux [options]
- *
- * Reads raw PCM audio (int16 stereo) from stdin, side channel data from fd 3,
- * and writes the multiplexed stream to stdout.
+ * Reads raw PCM audio (int16, interleaved) from stdin, side channel data from
+ * fd 3, and writes the multiplexed stream to stdout.
  */
 
 #include "mux.h"
@@ -17,7 +15,6 @@
 
 #define AUDIO_BUFFER_SIZE 8192
 #define SIDE_BUFFER_SIZE 4096
-#define OUTPUT_BUFFER_SIZE 16384
 
 struct encoder_config {
 	enum mux_codec_type codec;
@@ -52,6 +49,18 @@ static void usage(const char *prog)
 	fprintf(stderr, "  stdout: Multiplexed stream\n");
 }
 
+/* Sink: write muxed bytes straight to stdout. Returns 0 on success. */
+static int write_stdout(void *user, const void *data, size_t size)
+{
+	(void)user;
+	if (size == 0)
+		return 0;
+	if (write(STDOUT_FILENO, data, size) != (ssize_t)size) {
+		perror("write(stdout)");
+		return 1;
+	}
+	return 0;
+}
 
 static int encode_stream(const struct encoder_config *config)
 {
@@ -60,13 +69,10 @@ static int encode_stream(const struct encoder_config *config)
 	int num_params = 0;
 	uint8_t audio_buffer[AUDIO_BUFFER_SIZE];
 	uint8_t side_buffer[SIDE_BUFFER_SIZE];
-	uint8_t output_buffer[OUTPUT_BUFFER_SIZE];
 	ssize_t audio_read, side_read;
-	size_t consumed, written;
 	int ret;
 	int audio_eof = 0, side_eof = 0;
 
-	/* Set up codec parameters */
 	if (config->codec == MUX_CODEC_MP3 || config->codec == MUX_CODEC_VORBIS ||
 	    config->codec == MUX_CODEC_OPUS || config->codec == MUX_CODEC_AAC) {
 		params[num_params].name = "bitrate";
@@ -78,18 +84,15 @@ static int encode_stream(const struct encoder_config *config)
 		num_params++;
 	}
 
-	/* Create encoder */
 	enc = mux_encoder_new(config->codec, config->sample_rate,
 			      config->num_channels, config->num_streams,
-			      params, num_params);
+			      params, num_params, write_stdout, NULL);
 	if (!enc) {
 		fprintf(stderr, "Error: Failed to create encoder\n");
 		return 1;
 	}
 
-	/* Main encoding loop */
 	while (!audio_eof || !side_eof) {
-		/* Read audio from stdin */
 		if (!audio_eof) {
 			audio_read = read(STDIN_FILENO, audio_buffer, sizeof(audio_buffer));
 			if (audio_read < 0) {
@@ -101,7 +104,7 @@ static int encode_stream(const struct encoder_config *config)
 				audio_eof = 1;
 			} else {
 				ret = mux_encoder_encode(enc, audio_buffer, audio_read,
-							 &consumed, MUX_STREAM_AUDIO);
+							 MUX_STREAM_AUDIO);
 				if (ret != MUX_OK) {
 					const struct mux_error_info *err = mux_encoder_get_error(enc);
 					fprintf(stderr, "Error: Encode failed: %s\n", err->message);
@@ -111,72 +114,29 @@ static int encode_stream(const struct encoder_config *config)
 			}
 		}
 
-		/* Read side channel data from fd 3 */
 		if (!side_eof) {
 			side_read = read(3, side_buffer, sizeof(side_buffer));
-			if (side_read < 0) {
-				/* fd 3 not available - that's okay */
-				side_eof = 1;
-			} else if (side_read == 0) {
-				side_eof = 1;
+			if (side_read <= 0) {
+				side_eof = 1;   /* fd 3 absent or EOF - fine */
 			} else {
 				ret = mux_encoder_encode(enc, side_buffer, side_read,
-							 &consumed, MUX_STREAM_SIDE_CHANNEL);
+							 MUX_STREAM_SIDE_CHANNEL);
 				if (ret != MUX_OK) {
 					const struct mux_error_info *err = mux_encoder_get_error(enc);
 					fprintf(stderr, "Error: Encode failed: %s\n", err->message);
 					mux_encoder_destroy(enc);
 					return 1;
 				}
-			}
-		}
-
-		/* Write output to stdout */
-		while (1) {
-			ret = mux_encoder_read(enc, output_buffer, sizeof(output_buffer),
-					       &written);
-			if (written == 0)
-				break;
-			if (ret != MUX_OK) {
-				fprintf(stderr, "Error: Failed to read encoder output\n");
-				mux_encoder_destroy(enc);
-				return 1;
-			}
-
-			if (write(STDOUT_FILENO, output_buffer, written) != (ssize_t)written) {
-				perror("write(stdout)");
-				mux_encoder_destroy(enc);
-				return 1;
 			}
 		}
 	}
 
-	/* Finalize encoder */
 	ret = mux_encoder_finalize(enc);
 	if (ret != MUX_OK) {
 		const struct mux_error_info *err = mux_encoder_get_error(enc);
 		fprintf(stderr, "Error: Finalize failed: %s\n", err->message);
 		mux_encoder_destroy(enc);
 		return 1;
-	}
-
-	/* Write remaining output */
-	while (1) {
-		ret = mux_encoder_read(enc, output_buffer, sizeof(output_buffer),
-				       &written);
-		if (written == 0)
-			break;
-		if (ret != MUX_OK) {
-			fprintf(stderr, "Error: Failed to read encoder output\n");
-			mux_encoder_destroy(enc);
-			return 1;
-		}
-
-		if (write(STDOUT_FILENO, output_buffer, written) != (ssize_t)written) {
-			perror("write(stdout)");
-			mux_encoder_destroy(enc);
-			return 1;
-		}
 	}
 
 	mux_encoder_destroy(enc);

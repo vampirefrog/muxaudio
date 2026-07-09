@@ -80,7 +80,6 @@ endif()
 # Core sources (always included)
 set(MUXAUDIO_SOURCES
     src/core.c
-    src/buffer.c
     src/error.c
     src/mux_leb128.c
     src/codec_pcm.c
@@ -759,67 +758,90 @@ else()
         endif()
 
         if(MUXAUDIO_LINK_TARGET)
+            enable_testing()
+
             # Test utilities library
             add_library(test_utils STATIC tests/test_utils.c)
             target_include_directories(test_utils PUBLIC tests)
             target_link_libraries(test_utils m)
 
+            # Comprehensive push/streaming test across every built codec.
+            # Uses HAVE_* guards, so give it the same codec defines as the lib.
+            add_executable(test_pcm_stream tests/test_pcm_stream.c)
+            target_compile_definitions(test_pcm_stream PRIVATE ${MUXAUDIO_DEFINES})
+            target_link_libraries(test_pcm_stream ${MUXAUDIO_LINK_TARGET} m)
+            add_test(NAME stream COMMAND test_pcm_stream)
+
             # Core tests
             add_executable(test_pcm tests/test_pcm.c)
             target_link_libraries(test_pcm ${MUXAUDIO_LINK_TARGET})
+            add_test(NAME pcm COMMAND test_pcm)
 
             add_executable(test_errors tests/test_errors.c)
             target_link_libraries(test_errors ${MUXAUDIO_LINK_TARGET})
+            add_test(NAME errors COMMAND test_errors)
 
             add_executable(test_waveforms tests/test_waveforms.c)
             target_link_libraries(test_waveforms ${MUXAUDIO_LINK_TARGET} test_utils m)
+            add_test(NAME waveforms COMMAND test_waveforms)
 
             # Codec-specific tests
             if(LAME_FOUND AND MPG123_FOUND)
                 add_executable(test_mp3 tests/test_mp3.c)
                 target_link_libraries(test_mp3 ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME mp3 COMMAND test_mp3)
 
                 add_executable(test_mp3_simple tests/test_mp3_simple.c)
-                target_link_libraries(test_mp3_simple ${MUXAUDIO_LINK_TARGET})
+                target_link_libraries(test_mp3_simple ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME mp3_simple COMMAND test_mp3_simple)
 
                 add_executable(test_lossy_validation tests/test_lossy_validation.c)
                 target_link_libraries(test_lossy_validation ${MUXAUDIO_LINK_TARGET} test_utils m)
+                add_test(NAME lossy_validation COMMAND test_lossy_validation)
             endif()
 
             if(VORBIS_FOUND)
                 add_executable(test_vorbis_simple tests/test_vorbis_simple.c)
                 target_link_libraries(test_vorbis_simple ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME vorbis_simple COMMAND test_vorbis_simple)
 
                 add_executable(test_vorbis_validation tests/test_vorbis_validation.c)
                 target_link_libraries(test_vorbis_validation ${MUXAUDIO_LINK_TARGET} test_utils m)
+                add_test(NAME vorbis_validation COMMAND test_vorbis_validation)
             endif()
 
             if(OPUS_FOUND)
                 add_executable(test_opus_simple tests/test_opus_simple.c)
                 target_link_libraries(test_opus_simple ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME opus_simple COMMAND test_opus_simple)
             endif()
 
             if(FLAC_FOUND)
                 add_executable(test_flac_simple tests/test_flac_simple.c)
                 target_link_libraries(test_flac_simple ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME flac_simple COMMAND test_flac_simple)
 
                 add_executable(test_flac_validation tests/test_flac_validation.c)
                 target_link_libraries(test_flac_validation ${MUXAUDIO_LINK_TARGET} test_utils m)
+                add_test(NAME flac_validation COMMAND test_flac_validation)
             endif()
 
             if(FDK_AAC_FOUND)
                 add_executable(test_aac_simple tests/test_aac_simple.c)
                 target_link_libraries(test_aac_simple ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME aac_simple COMMAND test_aac_simple)
             endif()
 
             # G.711 tests (always available)
             add_executable(test_g711 tests/test_g711.c)
             target_link_libraries(test_g711 ${MUXAUDIO_LINK_TARGET} m)
+            add_test(NAME g711 COMMAND test_g711)
 
             # AMR tests
             if(OPENCORE_AMRNB_FOUND)
                 add_executable(test_amr tests/test_amr.c)
                 target_link_libraries(test_amr ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME amr COMMAND test_amr)
             endif()
         endif()
     endif()

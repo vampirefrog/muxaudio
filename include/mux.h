@@ -16,6 +16,13 @@ extern "C" {
 #define MUX_STREAM_SIDE_CHANNEL 1
 
 /*
+ * Emit flags (see mux_emit_fn). Set on the chunk that completes a logical
+ * frame, so the caller can reassemble discrete side-channel messages that the
+ * decoder may deliver in several pieces.
+ */
+#define MUX_EMIT_FRAME_END      1
+
+/*
  * Codec types
  */
 enum mux_codec_type {
@@ -124,6 +131,25 @@ struct mux_encoder;
 struct mux_decoder;
 
 /*
+ * Output sink: receives the muxed byte stream produced by the encoder.
+ * Invoked synchronously from within mux_encoder_encode()/mux_encoder_finalize(),
+ * possibly several times per call, with data in arbitrarily sized chunks.
+ * Return 0 to continue; a non-zero return aborts and is propagated back out of
+ * the encode call. The library never retains 'data' after the call returns.
+ */
+typedef int (*mux_sink_fn)(void *user, const void *data, size_t size);
+
+/*
+ * Emit callback: receives demultiplexed audio / side-channel data produced by
+ * the decoder. Invoked synchronously from within mux_decoder_decode()/
+ * mux_decoder_finalize(), possibly several times per call, with data delivered
+ * in arbitrarily sized chunks. 'flags' carries MUX_EMIT_FRAME_END on the chunk
+ * that completes a logical frame. Return 0 to continue; non-zero aborts.
+ */
+typedef int (*mux_emit_fn)(void *user, int stream_type,
+			   const void *data, size_t size, int flags);
+
+/*
  * Codec discovery
  */
 int mux_list_codecs(const struct mux_codec_info **codecs, int *count);
@@ -165,6 +191,7 @@ int mux_get_supported_sample_rates(enum mux_codec_type codec_type,
 
 /*
  * Encoder - static allocation
+ * 'sink' receives the muxed output and is required (may not be NULL).
  */
 int mux_encoder_init(struct mux_encoder *enc,
 		     enum mux_codec_type codec_type,
@@ -172,7 +199,9 @@ int mux_encoder_init(struct mux_encoder *enc,
 		     int num_channels,
 		     int num_streams,
 		     const struct mux_param *params,
-		     int num_params);
+		     int num_params,
+		     mux_sink_fn sink,
+		     void *sink_user);
 
 void mux_encoder_deinit(struct mux_encoder *enc);
 
@@ -184,18 +213,23 @@ struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
 				    int num_channels,
 				    int num_streams,
 				    const struct mux_param *params,
-				    int num_params);
+				    int num_params,
+				    mux_sink_fn sink,
+				    void *sink_user);
 
 void mux_encoder_destroy(struct mux_encoder *enc);
 
 /*
  * Decoder - static allocation
+ * 'emit' receives the demuxed output and is required (may not be NULL).
  */
 int mux_decoder_init(struct mux_decoder *dec,
 		     enum mux_codec_type codec_type,
 		     int num_streams,
 		     const struct mux_param *params,
-		     int num_params);
+		     int num_params,
+		     mux_emit_fn emit,
+		     void *emit_user);
 
 void mux_decoder_deinit(struct mux_decoder *dec);
 
@@ -205,49 +239,43 @@ void mux_decoder_deinit(struct mux_decoder *dec);
 struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
 				    int num_streams,
 				    const struct mux_param *params,
-				    int num_params);
+				    int num_params,
+				    mux_emit_fn emit,
+				    void *emit_user);
 
 void mux_decoder_destroy(struct mux_decoder *dec);
 
 /*
- * Encoding: audio/side_channel → multiplexed bytes
+ * Encoding: audio/side_channel -> muxed bytes.
+ * Consumes the entire input, emitting muxed output through the sink callback
+ * registered at construction. Returns MUX_OK, a MUX_ERROR_* code, or the
+ * non-zero value returned by the sink.
  */
 int mux_encoder_encode(struct mux_encoder *enc,
 		       const void *input,
 		       size_t input_size,
-		       size_t *input_consumed,
 		       int stream_type);
 
-int mux_encoder_read(struct mux_encoder *enc,
-		     void *output,
-		     size_t output_size,
-		     size_t *output_written);
-
 /*
- * Finalize encoder (flush buffered data)
- * Call this when done encoding to flush any buffered data.
- * After calling, use mux_encoder_read() to retrieve final output.
+ * Finalize encoder: flush any codec-internal carry (e.g. a partial frame) to
+ * the sink. Call once when done encoding.
  */
 int mux_encoder_finalize(struct mux_encoder *enc);
 
 /*
- * Decoding: multiplexed bytes → audio/side_channel
+ * Decoding: muxed bytes -> audio/side_channel.
+ * Consumes the entire input, delivering demuxed data through the emit callback
+ * registered at construction. Input may be fed in any chunking, down to a
+ * single byte per call. Returns MUX_OK, a MUX_ERROR_* code, or the non-zero
+ * value returned by the emit callback.
  */
 int mux_decoder_decode(struct mux_decoder *dec,
 		       const void *input,
-		       size_t input_size,
-		       size_t *input_consumed);
-
-int mux_decoder_read(struct mux_decoder *dec,
-		     void *output,
-		     size_t output_size,
-		     size_t *output_written,
-		     int *stream_type);
+		       size_t input_size);
 
 /*
- * Finalize decoder (flush buffered data)
- * Call this when done feeding input to flush any buffered data.
- * After calling, use mux_decoder_read() to retrieve final output.
+ * Finalize decoder: flush any codec-internal carry. Call once when the input
+ * stream ends.
  */
 int mux_decoder_finalize(struct mux_decoder *dec);
 

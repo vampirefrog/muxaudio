@@ -4,8 +4,8 @@
 #include <string.h>
 
 /*
- * Encode a 64-bit unsigned integer as unsigned LEB128
- * Returns number of bytes written, or negative error code
+ * Encode a 64-bit unsigned integer as unsigned LEB128.
+ * Returns number of bytes written, or negative error code.
  */
 int mux_leb128_encode(uint64_t value, uint8_t *output, size_t output_size)
 {
@@ -31,200 +31,129 @@ int mux_leb128_encode(uint64_t value, uint8_t *output, size_t output_size)
 }
 
 /*
- * Decode unsigned LEB128 to a 64-bit unsigned integer.
- * Returns MUX_OK on success or short input. On success, *bytes_read > 0 and
- * *value is set. On short input, *bytes_read = 0 and *value is unchanged.
+ * Emit a single mux frame straight to the sink - no buffering.
+ *
+ * Passthrough mode (num_streams == 1): write the raw payload.
+ * Mux mode (num_streams == 2): write [LEB128 length_and_stream][payload].
  */
-int mux_leb128_decode(const uint8_t *input, size_t input_size,
-		      uint64_t *value, size_t *bytes_read)
+int mux_leb128_emit_header(size_t payload_size, int stream_type,
+			   int num_streams, mux_sink_fn sink, void *user)
 {
-	uint64_t result = 0;
-	int shift = 0;
-	size_t count = 0;
-	uint8_t byte;
+	uint8_t header[10];  /* Max 10 bytes for a 64-bit LEB128 value */
+	uint64_t length_with_stream;
+	int header_len;
 
-	if (!input || !value || !bytes_read)
+	if (!sink)
 		return MUX_ERROR_INVAL;
 
-	do {
-		if (count >= input_size) {
-			*bytes_read = 0;
-			return MUX_OK;
-		}
+	if (num_streams == 1)
+		return MUX_OK;  /* passthrough: no framing */
 
-		byte = input[count++];
-		result |= (uint64_t)(byte & 0x7f) << shift;
-		shift += 7;
+	length_with_stream = ((uint64_t)payload_size << 1) | (stream_type & 1);
 
-		if (shift >= 64)
-			return MUX_ERROR_INVAL;  /* Overflow */
+	header_len = mux_leb128_encode(length_with_stream, header, sizeof(header));
+	if (header_len < 0)
+		return header_len;
 
-	} while (byte & 0x80);
+	return sink(user, header, header_len);
+}
 
-	*value = result;
-	*bytes_read = count;
+int mux_leb128_emit_frame(const void *payload, size_t payload_size,
+			  int stream_type, int num_streams,
+			  mux_sink_fn sink, void *user)
+{
+	int ret;
+
+	if (!sink)
+		return MUX_ERROR_INVAL;
+
+	ret = mux_leb128_emit_header(payload_size, stream_type, num_streams,
+				     sink, user);
+	if (ret)
+		return ret;
+
+	if (payload && payload_size > 0)
+		return sink(user, payload, payload_size);
 
 	return MUX_OK;
 }
 
-/*
- * Write a frame with LEB128 header
- * Format: [length_with_stream_id: LEB128][payload]
- * LSB of length indicates stream: 0=audio, 1=side channel
- * Actual payload length = length_value >> 1
- *
- * When num_streams == 1 (passthrough mode), writes raw payload without LEB128 framing.
- * When num_streams == 2 (mux mode), writes LEB128 frame with stream type.
- */
-int mux_leb128_write_frame(struct mux_buffer *output,
-			   const void *payload, size_t payload_size,
-			   int stream_type, int num_streams)
+void mux_leb128_parser_init(struct mux_leb128_parser *p)
 {
-	uint8_t leb128_buf[10];  /* Max 10 bytes for 64-bit LEB128 */
-	uint64_t length_with_stream;
-	int leb128_len;
+	memset(p, 0, sizeof(*p));
+}
+
+/*
+ * Feed bytes into the streaming demux parser. Delivers demuxed data to 'emit'
+ * as it is recognised, holding only integer state between calls. A payload may
+ * span any number of feed() calls and be delivered in any number of emit()
+ * chunks; MUX_EMIT_FRAME_END flags the chunk that completes a frame.
+ */
+int mux_leb128_parser_feed(struct mux_leb128_parser *p,
+			   const void *input, size_t size,
+			   int num_streams,
+			   mux_emit_fn emit, void *user)
+{
+	const uint8_t *in = input;
+	size_t n = size;
 	int ret;
 
-	/* Passthrough mode - write raw payload without LEB128 framing */
+	if (!p || !emit || (!input && size))
+		return MUX_ERROR_INVAL;
+
+	/* Passthrough mode - every byte is audio, no framing. */
 	if (num_streams == 1) {
-		if (payload && payload_size > 0) {
-			ret = mux_buffer_write(output, payload, payload_size);
-			if (ret != MUX_OK)
+		if (n > 0)
+			return emit(user, MUX_STREAM_AUDIO, in, n, 0);
+		return MUX_OK;
+	}
+
+	while (n > 0) {
+		if (!p->in_payload) {
+			/* Accumulate one LEB128 header byte. */
+			uint8_t b = *in++;
+			n--;
+
+			p->acc |= (uint64_t)(b & 0x7f) << p->shift;
+			p->shift += 7;
+
+			if (b & 0x80) {
+				if (p->shift >= 64)
+					return MUX_ERROR_FORMAT;  /* varint too long */
+				continue;
+			}
+
+			/* Header complete. */
+			p->stream_type = (int)(p->acc & 1);
+			p->payload_remaining = p->acc >> 1;
+			p->acc = 0;
+			p->shift = 0;
+			p->in_payload = 1;
+
+			if (p->payload_remaining == 0) {
+				/* Zero-length frame: one empty, terminal chunk. */
+				ret = emit(user, p->stream_type, in, 0,
+					   MUX_EMIT_FRAME_END);
+				if (ret)
+					return ret;
+				p->in_payload = 0;
+			}
+		} else {
+			size_t take = (p->payload_remaining < n)
+				      ? (size_t)p->payload_remaining : n;
+			int last = (take == p->payload_remaining);
+
+			ret = emit(user, p->stream_type, in, take,
+				   last ? MUX_EMIT_FRAME_END : 0);
+			if (ret)
 				return ret;
+
+			in += take;
+			n -= take;
+			p->payload_remaining -= take;
+			if (p->payload_remaining == 0)
+				p->in_payload = 0;
 		}
-		return MUX_OK;
-	}
-
-	/* Mux mode - write LEB128 frame */
-	/* Encode payload size in upper bits, stream type in LSB */
-	length_with_stream = (payload_size << 1) | (stream_type & 1);
-
-	leb128_len = mux_leb128_encode(length_with_stream, leb128_buf,
-				       sizeof(leb128_buf));
-	if (leb128_len < 0)
-		return leb128_len;
-
-	/* Write LEB128 header */
-	ret = mux_buffer_write(output, leb128_buf, leb128_len);
-	if (ret != MUX_OK)
-		return ret;
-
-	/* Write payload */
-	if (payload && payload_size > 0) {
-		ret = mux_buffer_write(output, payload, payload_size);
-		if (ret != MUX_OK)
-			return ret;
-	}
-
-	return MUX_OK;
-}
-
-/*
- * Read a frame with LEB128 header.
- * Returns MUX_OK on success or when no complete frame is available yet.
- *   On success: *stream_type >= 0 and *payload_size is set; read_pos advances.
- *   No data yet: *stream_type = -1, *payload_size = 0; read_pos unchanged.
- * MUX_ERROR_INVAL is returned when the caller's payload buffer is too small;
- * in that case *payload_size holds the required size so the caller can grow
- * its buffer and retry.
- *
- * When num_streams == 1 (passthrough mode), reads all available raw data as audio stream.
- * When num_streams == 2 (mux mode), reads LEB128 frame with stream type.
- */
-int mux_leb128_read_frame(struct mux_buffer *input,
-			  void *payload, size_t payload_capacity,
-			  size_t *payload_size, int *stream_type, int num_streams)
-{
-	uint64_t length_with_stream;
-	size_t leb128_bytes;
-	size_t actual_payload_size;
-	uint8_t *data_ptr;
-	int ret;
-	int stream;
-	size_t available;
-
-	if (!input || !payload_size || !stream_type)
-		return MUX_ERROR_INVAL;
-
-	/* Passthrough mode - read all available data as audio stream */
-	if (num_streams == 1) {
-		available = input->size - input->read_pos;
-		if (available == 0) {
-			*payload_size = 0;
-			*stream_type = -1;
-			return MUX_OK;
-		}
-
-		actual_payload_size = available < payload_capacity ? available : payload_capacity;
-
-		if (payload && actual_payload_size > 0) {
-			memcpy(payload, input->data + input->read_pos, actual_payload_size);
-		}
-
-		input->read_pos += actual_payload_size;
-		*payload_size = actual_payload_size;
-		*stream_type = MUX_STREAM_AUDIO;
-
-		/* Reset buffer if fully read */
-		if (input->read_pos == input->size) {
-			input->read_pos = 0;
-			input->size = 0;
-		}
-
-		return MUX_OK;
-	}
-
-	/* Mux mode - read LEB128 frame */
-	/* Try to decode LEB128 header */
-	data_ptr = input->data + input->read_pos;
-	ret = mux_leb128_decode(data_ptr,
-				input->size - input->read_pos,
-				&length_with_stream, &leb128_bytes);
-	if (ret != MUX_OK)
-		return ret;
-	if (leb128_bytes == 0) {
-		/* Header incomplete */
-		*payload_size = 0;
-		*stream_type = -1;
-		return MUX_OK;
-	}
-
-	/* Extract stream type and payload size */
-	stream = length_with_stream & 1;
-	actual_payload_size = length_with_stream >> 1;
-
-	/* Check if we have the full frame */
-	if (input->size - input->read_pos < leb128_bytes + actual_payload_size) {
-		*payload_size = 0;
-		*stream_type = -1;
-		return MUX_OK;
-	}
-
-	/* Set payload size even if buffer is too small (caller can reallocate) */
-	*payload_size = actual_payload_size;
-	*stream_type = stream;
-
-	/* Check output buffer size */
-	if (payload && payload_capacity < actual_payload_size)
-		return MUX_ERROR_INVAL;
-
-	/* Advance past LEB128 header */
-	input->read_pos += leb128_bytes;
-
-	/* Read payload */
-	if (payload && actual_payload_size > 0) {
-		memcpy(payload, input->data + input->read_pos,
-		       actual_payload_size);
-	}
-	input->read_pos += actual_payload_size;
-
-	*payload_size = actual_payload_size;
-	*stream_type = stream;
-
-	/* Reset buffer if fully read */
-	if (input->read_pos == input->size) {
-		input->read_pos = 0;
-		input->size = 0;
 	}
 
 	return MUX_OK;

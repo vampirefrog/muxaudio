@@ -13,25 +13,32 @@
 #include <mpg123.h>
 #endif
 
-#ifdef HAVE_MP3_ENCODE
 /*
- * LAME error code translation
+ * MP3 codec (push / streaming, LEB128-framed)
+ *
+ * Encoder: LAME output is emitted as LEB128 audio frames straight to the sink.
+ * PCM is processed in fixed-size blocks into a fixed scratch buffer - no
+ * growable/output buffering.
+ *
+ * Decoder: mpg123's feed mode buffers input internally and yields PCM as frames
+ * complete, so the LEB128 parser can feed it audio bytes in any chunking (down
+ * to one byte) with no reassembly. Without mpg123 the decoder is a passthrough
+ * demux that forwards raw MP3 frame bytes on the audio stream.
  */
+
+#ifdef HAVE_MP3_ENCODE
+/* One LAME call per block; worst-case output is ceil(1.25*n)+7200 (lame.h). */
+#define MP3_ENC_BLOCK   8192
+#define MP3_ENC_BUFCAP  (((MP3_ENC_BLOCK * 5 + 3) / 4) + 7200 + 1024)
+
 static const char *lame_encode_error_string(int lame_ret)
 {
 	switch (lame_ret) {
-	case -1:
-		return "mp3buf was too small";
-	case -2:
-		return "malloc problem";
-	case -3:
-		return "lame_init_params was not called";
-	case -4:
-		return "psycho acoustic problems";
-	default:
-		if (lame_ret < 0)
-			return "unknown LAME error";
-		return NULL;
+	case -1: return "mp3buf was too small";
+	case -2: return "malloc problem";
+	case -3: return "lame_init_params was not called";
+	case -4: return "psycho acoustic problems";
+	default: return lame_ret < 0 ? "unknown LAME error" : NULL;
 	}
 }
 #endif
@@ -45,105 +52,37 @@ static const char *mpg123_error_string(mpg123_handle *mh)
 #endif
 
 #ifdef HAVE_MP3_ENCODE
-/*
- * MP3 encoder state
- */
 struct mp3_encoder_data {
 	lame_global_flags *gfp;
-	uint8_t *mp3_buffer;     /* Dynamic buffer for encoded MP3 frames */
-	size_t mp3_buffer_size;  /* Allocated capacity */
+	uint8_t mp3_buffer[MP3_ENC_BUFCAP];
 };
 
-/*
- * Per LAME docs, the worst-case output for lame_encode_buffer is
- *   1.25 * num_samples + 7200 bytes
- * (see libmp3lame/lame.h). Grow our scratch buffer to fit the call.
- */
-static int mp3_ensure_buffer(struct mp3_encoder_data *data, size_t num_samples)
-{
-	size_t needed = (num_samples * 5 + 3) / 4 + 7200;  /* ceil(1.25 * n) + 7200 */
-	if (needed <= data->mp3_buffer_size) return 0;
-	size_t grown = data->mp3_buffer_size ? data->mp3_buffer_size : 16384;
-	while (grown < needed) grown *= 2;
-	uint8_t *p = realloc(data->mp3_buffer, grown);
-	if (!p) return -1;
-	data->mp3_buffer = p;
-	data->mp3_buffer_size = grown;
-	return 0;
-}
-#endif
-
-#ifdef HAVE_MP3_DECODE
-/*
- * MP3 decoder state
- */
-struct mp3_decoder_data {
-#ifdef HAVE_MP3_USE_MPG123
-	mpg123_handle *mh;  /* mpg123 decoder handle */
-#endif
-	struct mux_buffer input_buf;  /* Buffer for muxed input */
-};
-#endif
-
-#ifdef HAVE_MP3_ENCODE
-/*
- * MP3 encoder parameters
- */
 static const struct mux_param_desc mp3_encoder_params[] = {
-	{
-		.name = "bitrate",
-		.description = "Bitrate in kbps (CBR mode)",
-		.type = MUX_PARAM_TYPE_INT,
-		.range.i = { .min = 32, .max = 320, .def = 128 }
-	},
-	{
-		.name = "quality",
-		.description = "Quality (0=best, 9=worst)",
-		.type = MUX_PARAM_TYPE_INT,
-		.range.i = { .min = 0, .max = 9, .def = 5 }
-	},
-	{
-		.name = "vbr",
-		.description = "Enable VBR mode",
-		.type = MUX_PARAM_TYPE_BOOL,
-		.range.b = { .def = 0 }
-	}
+	{ .name = "bitrate", .description = "Bitrate in kbps (CBR mode)",
+	  .type = MUX_PARAM_TYPE_INT, .range.i = { .min = 32, .max = 320, .def = 128 } },
+	{ .name = "quality", .description = "Quality (0=best, 9=worst)",
+	  .type = MUX_PARAM_TYPE_INT, .range.i = { .min = 0, .max = 9, .def = 5 } },
+	{ .name = "vbr", .description = "Enable VBR mode",
+	  .type = MUX_PARAM_TYPE_BOOL, .range.b = { .def = 0 } }
 };
-#endif
 
-#ifdef HAVE_MP3_ENCODE
-/*
- * Helper to find parameter value by name
- */
 static const struct mux_param *find_param(const struct mux_param *params,
-					  int num_params,
-					  const char *name)
+					  int num_params, const char *name)
 {
 	int i;
-
-	for (i = 0; i < num_params; i++) {
+	for (i = 0; i < num_params; i++)
 		if (strcmp(params[i].name, name) == 0)
 			return &params[i];
-	}
 	return NULL;
 }
-#endif /* HAVE_MP3_ENCODE */
 
-#ifdef HAVE_MP3_ENCODE
-/*
- * MP3 encoder initialization
- */
-static int mp3_encoder_init(struct mux_encoder *enc,
-			    int sample_rate,
-			    int num_channels,
-			    const struct mux_param *params,
+static int mp3_encoder_init(struct mux_encoder *enc, int sample_rate,
+			    int num_channels, const struct mux_param *params,
 			    int num_params)
 {
 	struct mp3_encoder_data *data;
 	const struct mux_param *param;
-	int bitrate = 128;
-	int quality = 5;
-	int vbr = 0;
+	int bitrate = 128, quality = 5, vbr = 0;
 
 	data = calloc(1, sizeof(*data));
 	if (!data) {
@@ -153,7 +92,6 @@ static int mp3_encoder_init(struct mux_encoder *enc,
 		return MUX_ERROR_NOMEM;
 	}
 
-	/* Initialize LAME */
 	data->gfp = lame_init();
 	if (!data->gfp) {
 		mux_encoder_set_error(enc, MUX_ERROR_INIT,
@@ -163,29 +101,20 @@ static int mp3_encoder_init(struct mux_encoder *enc,
 		return MUX_ERROR_INIT;
 	}
 
-	/* Get parameters */
 	param = find_param(params, num_params, "bitrate");
-	if (param)
-		bitrate = param->value.i;
-
+	if (param) bitrate = param->value.i;
 	param = find_param(params, num_params, "quality");
-	if (param)
-		quality = param->value.i;
-
+	if (param) quality = param->value.i;
 	param = find_param(params, num_params, "vbr");
-	if (param)
-		vbr = param->value.b;
+	if (param) vbr = param->value.b;
 
-	/* Configure LAME */
 	lame_set_num_channels(data->gfp, num_channels);
 	lame_set_in_samplerate(data->gfp, sample_rate);
 	lame_set_quality(data->gfp, quality);
-
-	if (vbr) {
+	if (vbr)
 		lame_set_VBR(data->gfp, vbr_default);
-	} else {
+	else
 		lame_set_brate(data->gfp, bitrate);
-	}
 
 	if (lame_init_params(data->gfp) < 0) {
 		mux_encoder_set_error(enc, MUX_ERROR_INIT,
@@ -200,200 +129,179 @@ static int mp3_encoder_init(struct mux_encoder *enc,
 	return MUX_OK;
 }
 
-/*
- * MP3 encoder deinitialization
- */
 static void mp3_encoder_deinit(struct mux_encoder *enc)
 {
 	struct mp3_encoder_data *data;
 
 	if (!enc || !enc->codec_data)
 		return;
-
 	data = enc->codec_data;
 	if (data->gfp)
 		lame_close(data->gfp);
-	free(data->mp3_buffer);
 	free(data);
 	enc->codec_data = NULL;
 }
 
-/*
- * MP3 encoder encode
- * For audio: compress with LAME and write LEB128 frames
- * For side channel: write raw LEB128 frames
- */
-static int mp3_encoder_encode(struct mux_encoder *enc,
-			      const void *input,
-			      size_t input_size,
-			      size_t *input_consumed,
-			      int stream_type)
+static int mp3_emit_lame(struct mux_encoder *enc, int mp3_bytes)
+{
+	struct mp3_encoder_data *data = enc->codec_data;
+
+	if (mp3_bytes < 0) {
+		mux_encoder_set_error(enc, MUX_ERROR_ENCODE, "LAME encoding failed",
+				      "libmp3lame", mp3_bytes,
+				      lame_encode_error_string(mp3_bytes));
+		return MUX_ERROR_ENCODE;
+	}
+	if (mp3_bytes == 0)
+		return MUX_OK;
+	return mux_leb128_emit_frame(data->mp3_buffer, mp3_bytes,
+				     MUX_STREAM_AUDIO, enc->num_streams,
+				     enc->sink, enc->sink_user);
+}
+
+static int mp3_encoder_encode(struct mux_encoder *enc, const void *input,
+			      size_t input_size, int stream_type)
 {
 	struct mp3_encoder_data *data;
-	int ret;
+	const int16_t *pcm;
+	size_t total, off;
+	int nch, ret;
 
-	if (!enc || !input || !input_consumed)
+	if (!enc || (!input && input_size))
 		return MUX_ERROR_INVAL;
-
 	data = enc->codec_data;
 	if (!data)
 		return MUX_ERROR_INVAL;
-
-	if (input_size == 0) {
-		*input_consumed = 0;
+	if (input_size == 0)
 		return MUX_OK;
-	}
 
-	/* Side channel data passes through uncompressed */
-	if (stream_type == MUX_STREAM_SIDE_CHANNEL) {
-		ret = mux_leb128_write_frame(&enc->output, input, input_size,
-					     stream_type, enc->num_streams);
-		if (ret != MUX_OK)
+	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
+		return mux_leb128_emit_frame(input, input_size, stream_type,
+					     enc->num_streams,
+					     enc->sink, enc->sink_user);
+
+	pcm = input;
+	nch = enc->num_channels;
+	total = input_size / sizeof(int16_t) / nch;
+
+	for (off = 0; off < total; ) {
+		size_t blk = total - off;
+		int mp3_bytes;
+
+		if (blk > MP3_ENC_BLOCK)
+			blk = MP3_ENC_BLOCK;
+
+		if (nch == 1)
+			mp3_bytes = lame_encode_buffer(data->gfp, pcm + off, NULL,
+						       blk, data->mp3_buffer,
+						       sizeof(data->mp3_buffer));
+		else
+			mp3_bytes = lame_encode_buffer_interleaved(
+				data->gfp, (short *)(pcm + off * nch), blk,
+				data->mp3_buffer, sizeof(data->mp3_buffer));
+
+		ret = mp3_emit_lame(enc, mp3_bytes);
+		if (ret)
 			return ret;
-		*input_consumed = input_size;
-		return MUX_OK;
+
+		off += blk;
 	}
 
-	/* Audio data: compress with LAME */
-	/* Assume input is interleaved 16-bit PCM */
-	const int16_t *pcm = input;
-	size_t num_samples = input_size / sizeof(int16_t) / enc->num_channels;
-	int mp3_bytes;
-
-	if (mp3_ensure_buffer(data, num_samples) < 0) {
-		mux_encoder_set_error(enc, MUX_ERROR_NOMEM,
-				      "Failed to grow MP3 output buffer",
-				      NULL, 0, NULL);
-		return MUX_ERROR_NOMEM;
-	}
-
-	if (enc->num_channels == 1) {
-		mp3_bytes = lame_encode_buffer(data->gfp,
-					       pcm, NULL,
-					       num_samples,
-					       data->mp3_buffer,
-					       data->mp3_buffer_size);
-	} else {
-		mp3_bytes = lame_encode_buffer_interleaved(data->gfp,
-							   (short *)pcm,
-							   num_samples,
-							   data->mp3_buffer,
-							   data->mp3_buffer_size);
-	}
-
-	if (mp3_bytes < 0) {
-		const char *err_msg = lame_encode_error_string(mp3_bytes);
-		mux_encoder_set_error(enc, MUX_ERROR_ENCODE,
-				      "LAME encoding failed",
-				      "libmp3lame", mp3_bytes, err_msg);
-		return MUX_ERROR_ENCODE;
-	}
-
-	/* Write compressed data as LEB128 frame if we got output */
-	if (mp3_bytes > 0) {
-		ret = mux_leb128_write_frame(&enc->output,
-					     data->mp3_buffer, mp3_bytes,
-					     MUX_STREAM_AUDIO, enc->num_streams);
-		if (ret != MUX_OK)
-			return ret;
-	}
-
-	*input_consumed = input_size;
 	return MUX_OK;
 }
 
-/*
- * MP3 encoder read
- */
-static int mp3_encoder_read(struct mux_encoder *enc,
-			    void *output,
-			    size_t output_size,
-			    size_t *output_written)
-{
-	size_t bytes_read;
-	int ret;
-
-	if (!enc || !output || !output_written)
-		return MUX_ERROR_INVAL;
-
-	ret = mux_buffer_read(&enc->output, output, output_size,
-			      &bytes_read);
-	if (ret != MUX_OK) {
-		*output_written = 0;
-		return ret;
-	}
-
-	*output_written = bytes_read;
-	return MUX_OK;
-}
-
-/*
- * MP3 encoder finalize
- * Flushes any buffered PCM data and generates final MP3 frames
- */
 static int mp3_encoder_finalize(struct mux_encoder *enc)
 {
 	struct mp3_encoder_data *data;
 	int mp3_bytes;
-	int ret;
 
 	if (!enc)
 		return MUX_ERROR_INVAL;
-
 	data = enc->codec_data;
 	if (!data)
 		return MUX_ERROR_INVAL;
 
-	/* Flush LAME encoder. lame_encode_flush itself can produce up to a few
-	 * KB; ensure we have at least 7200 bytes (LAME's recommended floor). */
-	if (mp3_ensure_buffer(data, 0) < 0) {
-		mux_encoder_set_error(enc, MUX_ERROR_NOMEM,
-				      "Failed to grow MP3 output buffer",
-				      NULL, 0, NULL);
-		return MUX_ERROR_NOMEM;
-	}
-	mp3_bytes = lame_encode_flush(data->gfp,
-				      data->mp3_buffer,
-				      data->mp3_buffer_size);
-
-	if (mp3_bytes < 0) {
-		const char *err_msg = lame_encode_error_string(mp3_bytes);
-		mux_encoder_set_error(enc, MUX_ERROR_ENCODE,
-				      "LAME flush failed",
-				      "libmp3lame", mp3_bytes, err_msg);
-		return MUX_ERROR_ENCODE;
-	}
-
-	/* Write flushed data as LEB128 frame if we got output */
-	if (mp3_bytes > 0) {
-		ret = mux_leb128_write_frame(&enc->output,
-					     data->mp3_buffer, mp3_bytes,
-					     MUX_STREAM_AUDIO, enc->num_streams);
-		if (ret != MUX_OK)
-			return ret;
-	}
-
-	return MUX_OK;
+	mp3_bytes = lame_encode_flush(data->gfp, data->mp3_buffer,
+				      sizeof(data->mp3_buffer));
+	return mp3_emit_lame(enc, mp3_bytes);
 }
 #endif /* HAVE_MP3_ENCODE */
 
 #ifdef HAVE_MP3_DECODE
-/*
- * MP3 decoder initialization
- */
-static int mp3_decoder_init(struct mux_decoder *dec,
-			    const struct mux_param *params,
-			    int num_params)
-{
-	struct mp3_decoder_data *data;
-	int err;
-
-	(void)params;
-	(void)num_params;
-	(void)err;
+struct mp3_decoder_data {
+#ifdef HAVE_MP3_USE_MPG123
+	mpg123_handle *mh;
+#endif
+	struct mux_leb128_parser parser;
+};
 
 #ifdef HAVE_MP3_USE_MPG123
-	/* Initialize mpg123 library (once per process) */
+/* Drain all currently-decodable PCM from mpg123 to the emit callback. */
+static int mp3_drain(struct mux_decoder *dec, mpg123_handle *mh)
+{
+	for (;;) {
+		unsigned char pcm_buf[16384];
+		size_t pcm_bytes = 0;
+		int ret = mpg123_read(mh, pcm_buf, sizeof(pcm_buf), &pcm_bytes);
+
+		if (pcm_bytes > 0) {
+			int r = mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm_buf,
+						 pcm_bytes, 0);
+			if (r)
+				return r;
+		}
+
+		if (ret == MPG123_OK)
+			continue;
+		if (ret == MPG123_NEW_FORMAT) {
+			long rate; int channels, encoding;
+			mpg123_getformat(mh, &rate, &channels, &encoding);
+			continue;
+		}
+		if (ret == MPG123_NEED_MORE || ret == MPG123_DONE)
+			return MUX_OK;
+
+		mux_decoder_set_error(dec, MUX_ERROR_DECODE, "mpg123_read failed",
+				      "mpg123", ret, mpg123_error_string(mh));
+		return MUX_ERROR_DECODE;
+	}
+}
+#endif
+
+/* Parser emit shim: audio -> mpg123 (or passthrough); side -> forward. */
+static int mp3_parser_emit(void *user, int stream_type, const void *chunk,
+			   size_t size, int flags)
+{
+	struct mux_decoder *dec = user;
+	struct mp3_decoder_data *data = dec->codec_data;
+
+	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
+		return mux_decoder_emit(dec, stream_type, chunk, size, flags);
+
+#ifdef HAVE_MP3_USE_MPG123
+	if (size > 0) {
+		int ret = mpg123_feed(data->mh, chunk, size);
+		if (ret != MPG123_OK && ret != MPG123_NEED_MORE) {
+			mux_decoder_set_error(dec, MUX_ERROR_DECODE,
+					      "mpg123_feed failed", "mpg123", ret,
+					      mpg123_error_string(data->mh));
+			return MUX_ERROR_DECODE;
+		}
+	}
+	return mp3_drain(dec, data->mh);
+#else
+	/* Passthrough: forward raw MP3 frame bytes on the audio stream. */
+	(void)data;
+	return mux_decoder_emit(dec, MUX_STREAM_AUDIO, chunk, size, flags);
+#endif
+}
+
+static int mp3_decoder_init(struct mux_decoder *dec,
+			    const struct mux_param *params, int num_params)
+{
+	struct mp3_decoder_data *data;
+#ifdef HAVE_MP3_USE_MPG123
+	int err;
 	static int mpg123_inited = 0;
 	if (!mpg123_inited) {
 		if (mpg123_init() != MPG123_OK) {
@@ -405,6 +313,8 @@ static int mp3_decoder_init(struct mux_decoder *dec,
 		mpg123_inited = 1;
 	}
 #endif
+	(void)params;
+	(void)num_params;
 
 	data = calloc(1, sizeof(*data));
 	if (!data) {
@@ -413,316 +323,97 @@ static int mp3_decoder_init(struct mux_decoder *dec,
 				      NULL, 0, NULL);
 		return MUX_ERROR_NOMEM;
 	}
+	mux_leb128_parser_init(&data->parser);
 
 #ifdef HAVE_MP3_USE_MPG123
-	/* Create mpg123 decoder handle */
 	data->mh = mpg123_new(NULL, &err);
 	if (!data->mh) {
 		mux_decoder_set_error(dec, MUX_ERROR_INIT,
-				      "Failed to create mpg123 handle",
-				      "mpg123", err, mpg123_plain_strerror(err));
+				      "Failed to create mpg123 handle", "mpg123",
+				      err, mpg123_plain_strerror(err));
 		free(data);
 		return MUX_ERROR_INIT;
 	}
-
-	/* Open in feed mode (streaming) */
 	if (mpg123_open_feed(data->mh) != MPG123_OK) {
 		mux_decoder_set_error(dec, MUX_ERROR_INIT,
-				      "Failed to open mpg123 feed mode",
-				      "mpg123", 0, mpg123_error_string(data->mh));
+				      "Failed to open mpg123 feed mode", "mpg123",
+				      0, mpg123_error_string(data->mh));
 		mpg123_delete(data->mh);
 		free(data);
 		return MUX_ERROR_INIT;
 	}
 #endif
-
-	/* Allocate input buffer for demuxing */
-	if (mux_buffer_init(&data->input_buf, 4096) != MUX_OK) {
-		mux_decoder_set_error(dec, MUX_ERROR_NOMEM,
-				      "Failed to allocate input buffer",
-				      NULL, 0, NULL);
-#ifdef HAVE_MP3_USE_MPG123
-		mpg123_delete(data->mh);
-#endif
-		free(data);
-		return MUX_ERROR_NOMEM;
-	}
 
 	dec->codec_data = data;
 	return MUX_OK;
 }
 
-/*
- * MP3 decoder deinitialization
- */
 static void mp3_decoder_deinit(struct mux_decoder *dec)
 {
 	struct mp3_decoder_data *data;
 
 	if (!dec || !dec->codec_data)
 		return;
-
 	data = dec->codec_data;
 #ifdef HAVE_MP3_USE_MPG123
 	if (data->mh)
 		mpg123_delete(data->mh);
 #endif
-	mux_buffer_deinit(&data->input_buf);
 	free(data);
 	dec->codec_data = NULL;
 }
 
-/*
- * MP3 decoder decode
- * Reads LEB128 frames and decompresses MP3 audio using mpg123
- */
-static int mp3_decoder_decode(struct mux_decoder *dec,
-			      const void *input,
-			      size_t input_size,
-			      size_t *input_consumed)
+static int mp3_decoder_decode(struct mux_decoder *dec, const void *input,
+			      size_t input_size)
 {
 	struct mp3_decoder_data *data;
-	/* Encoders may pack multiple mp3 frames into a single leb128 payload
-	 * (e.g. lame_encode_buffer's output for one large PCM chunk); 64KB is
-	 * comfortable for ~700ms of mp3 audio and avoids dynamic allocation
-	 * here. mux_leb128_read_frame returns MUX_ERROR_INVAL if any single
-	 * payload exceeds this. */
-	uint8_t frame_buf[65536];
-	size_t frame_size;
-	int stream_type;
-	int ret;
-	size_t consumed = 0;
 
-	if (!dec || !input || !input_consumed)
+	if (!dec || (!input && input_size))
 		return MUX_ERROR_INVAL;
-
 	data = dec->codec_data;
 	if (!data)
 		return MUX_ERROR_INVAL;
 
-	/* Add input to buffer */
-	ret = mux_buffer_write(&data->input_buf, input, input_size);
-	if (ret != MUX_OK)
-		return ret;
-
-	consumed = input_size;
-
-	/* Try to read frames from input buffer */
-	while (1) {
-		ret = mux_leb128_read_frame(&data->input_buf,
-					    frame_buf, sizeof(frame_buf),
-					    &frame_size, &stream_type, dec->num_streams);
-		if (ret != MUX_OK) {
-			mux_decoder_set_error(dec, MUX_ERROR_FORMAT,
-					      "Failed to read LEB128 frame",
-					      NULL, 0, NULL);
-			return ret;
-		}
-
-		if (stream_type < 0) {
-			/* No complete frame yet, wait for more input */
-			break;
-		}
-
-		/* Side channel passes through */
-		if (stream_type == MUX_STREAM_SIDE_CHANNEL) {
-			ret = mux_buffer_write(&dec->side_output,
-					       frame_buf, frame_size);
-			if (ret != MUX_OK)
-				return ret;
-			continue;
-		}
-
-#ifdef HAVE_MP3_USE_MPG123
-		/* Feed MP3 data to mpg123 */
-		ret = mpg123_feed(data->mh, frame_buf, frame_size);
-		if (ret != MPG123_OK && ret != MPG123_NEED_MORE) {
-			mux_decoder_set_error(dec, MUX_ERROR_DECODE,
-					      "mpg123_feed failed",
-					      "mpg123", ret, mpg123_error_string(data->mh));
-			return MUX_ERROR_DECODE;
-		}
-
-		/* Read all available decoded data after this feed */
-		while (1) {
-			unsigned char pcm_buf[16384];
-			size_t pcm_bytes;
-
-			ret = mpg123_read(data->mh, pcm_buf, sizeof(pcm_buf), &pcm_bytes);
-
-			/* Write decoded data if we got any */
-			if (pcm_bytes > 0) {
-				int write_ret = mux_buffer_write(&dec->audio_output,
-							       pcm_buf, pcm_bytes);
-				if (write_ret != MUX_OK)
-					return write_ret;
-			}
-
-			/* Check return code */
-			if (ret == MPG123_OK) {
-				/* Got data, continue reading */
-				continue;
-			} else if (ret == MPG123_DONE) {
-				/* End of stream */
-				break;
-			} else if (ret == MPG123_NEED_MORE) {
-				/* Need more input - break inner loop to feed more */
-				break;
-			} else if (ret == MPG123_NEW_FORMAT) {
-				/* Format changed - get new format and continue */
-				long rate;
-				int channels, encoding;
-				mpg123_getformat(data->mh, &rate, &channels, &encoding);
-				continue;
-			} else {
-				/* Error */
-				mux_decoder_set_error(dec, MUX_ERROR_DECODE,
-						      "mpg123_read failed",
-						      "mpg123", ret, mpg123_error_string(data->mh));
-				return MUX_ERROR_DECODE;
-			}
-		}
-#else
-		/* Passthrough mode (no mpg123): emit raw MP3 frame bytes on the
-		 * audio stream. The caller is expected to feed them into a
-		 * separate MP3 decoder (e.g. the browser's native audio path). */
-		ret = mux_buffer_write(&dec->audio_output, frame_buf, frame_size);
-		if (ret != MUX_OK)
-			return ret;
-#endif
-	}
-
-	*input_consumed = consumed;
-	return MUX_OK;
+	return mux_leb128_parser_feed(&data->parser, input, input_size,
+				      dec->num_streams, mp3_parser_emit, dec);
 }
 
-/*
- * MP3 decoder read
- */
-static int mp3_decoder_read(struct mux_decoder *dec,
-			    void *output,
-			    size_t output_size,
-			    size_t *output_written,
-			    int *stream_type)
-{
-	size_t bytes_read;
-	int ret;
-
-	if (!dec || !output || !output_written || !stream_type)
-		return MUX_ERROR_INVAL;
-
-	/* Try audio buffer first */
-	ret = mux_buffer_read(&dec->audio_output, output, output_size,
-			      &bytes_read);
-	if (ret != MUX_OK)
-		return ret;
-	if (bytes_read > 0) {
-		*output_written = bytes_read;
-		*stream_type = MUX_STREAM_AUDIO;
-		return MUX_OK;
-	}
-
-	/* Try side channel buffer */
-	ret = mux_buffer_read(&dec->side_output, output, output_size,
-			      &bytes_read);
-	if (ret != MUX_OK)
-		return ret;
-	if (bytes_read > 0) {
-		*output_written = bytes_read;
-		*stream_type = MUX_STREAM_SIDE_CHANNEL;
-		return MUX_OK;
-	}
-
-	/* No data available */
-	*output_written = 0;
-	return MUX_OK;
-}
-
-/*
- * MP3 decoder finalize
- * Flushes mpg123 internal buffers by feeding NULL
- */
 static int mp3_decoder_finalize(struct mux_decoder *dec)
 {
+#ifdef HAVE_MP3_USE_MPG123
+	struct mp3_decoder_data *data;
+	int ret;
+
 	if (!dec)
 		return MUX_ERROR_INVAL;
-
-#ifdef HAVE_MP3_USE_MPG123
-	struct mp3_decoder_data *data = dec->codec_data;
-	int ret;
+	data = dec->codec_data;
 	if (!data || !data->mh)
 		return MUX_ERROR_INVAL;
 
-	/* Feed NULL to signal end of stream */
 	ret = mpg123_feed(data->mh, NULL, 0);
 	if (ret != MPG123_OK && ret != MPG123_NEED_MORE) {
 		mux_decoder_set_error(dec, MUX_ERROR_DECODE,
-				      "mpg123_feed(NULL) failed",
-				      "mpg123", ret, mpg123_error_string(data->mh));
+				      "mpg123_feed(NULL) failed", "mpg123", ret,
+				      mpg123_error_string(data->mh));
 		return MUX_ERROR_DECODE;
 	}
-
-	/* Read out remaining decoded data */
-	while (1) {
-		unsigned char pcm_buf[16384];
-		size_t pcm_bytes;
-
-		ret = mpg123_read(data->mh, pcm_buf, sizeof(pcm_buf), &pcm_bytes);
-
-		/* Write decoded data if we got any */
-		if (pcm_bytes > 0) {
-			int write_ret = mux_buffer_write(&dec->audio_output,
-						       pcm_buf, pcm_bytes);
-			if (write_ret != MUX_OK)
-				return write_ret;
-		}
-
-		/* Check return code */
-		if (ret == MPG123_OK) {
-			/* Got data, continue reading */
-			continue;
-		} else if (ret == MPG123_DONE) {
-			/* End of stream reached */
-			break;
-		} else if (ret == MPG123_NEED_MORE) {
-			/* No more data */
-			break;
-		} else if (ret == MPG123_NEW_FORMAT) {
-			/* Format changed - get new format and continue */
-			long rate;
-			int channels, encoding;
-			mpg123_getformat(data->mh, &rate, &channels, &encoding);
-			continue;
-		} else {
-			/* Error */
-			mux_decoder_set_error(dec, MUX_ERROR_DECODE,
-					      "mpg123_read failed during finalize",
-					      "mpg123", ret, mpg123_error_string(data->mh));
-			return MUX_ERROR_DECODE;
-		}
-	}
-#endif
-
+	return mp3_drain(dec, data->mh);
+#else
+	(void)dec;
 	return MUX_OK;
+#endif
 }
 #endif /* HAVE_MP3_DECODE */
 
-/*
- * MP3 sample rate constraints (MPEG-1 and MPEG-2 supported rates)
- */
 static const int mp3_sample_rates[] = {
 	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000
 };
 
-/*
- * MP3 codec operations
- */
 const struct mux_codec_ops mux_codec_mp3_ops = {
 #ifdef HAVE_MP3_ENCODE
 	.encoder_init = mp3_encoder_init,
 	.encoder_deinit = mp3_encoder_deinit,
 	.encoder_encode = mp3_encoder_encode,
-	.encoder_read = mp3_encoder_read,
 	.encoder_finalize = mp3_encoder_finalize,
 	.encoder_params = mp3_encoder_params,
 	.encoder_param_count = sizeof(mp3_encoder_params) / sizeof(mp3_encoder_params[0]),
@@ -730,7 +421,6 @@ const struct mux_codec_ops mux_codec_mp3_ops = {
 	.encoder_init = NULL,
 	.encoder_deinit = NULL,
 	.encoder_encode = NULL,
-	.encoder_read = NULL,
 	.encoder_finalize = NULL,
 	.encoder_params = NULL,
 	.encoder_param_count = 0,
@@ -740,13 +430,11 @@ const struct mux_codec_ops mux_codec_mp3_ops = {
 	.decoder_init = mp3_decoder_init,
 	.decoder_deinit = mp3_decoder_deinit,
 	.decoder_decode = mp3_decoder_decode,
-	.decoder_read = mp3_decoder_read,
 	.decoder_finalize = mp3_decoder_finalize,
 #else
 	.decoder_init = NULL,
 	.decoder_deinit = NULL,
 	.decoder_decode = NULL,
-	.decoder_read = NULL,
 	.decoder_finalize = NULL,
 #endif
 
