@@ -1,52 +1,34 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "mux.h"
+#include "mux_testhelp.h"
 #include <stdio.h>
-#include <string.h>
-#include <stdint.h>
 
 int main(void)
 {
-	struct mux_encoder *enc;
-	int16_t pcm_input[4096];  /* Small test */
-	uint8_t muxed_buffer[16384];
-	size_t input_consumed, output_written;
-	int ret;
+	int16_t pcm[8192];   /* 4096 frames stereo */
+	struct th_buf muxed;
+	struct th_out out;
+	int ok;
 
-	printf("=== Simple MP3 Encoder Test ===\n\n");
+	printf("=== Simple MP3 Encoder/Decoder Test ===\n");
+	th_sine(pcm, 4096, 2, 44100, 440.0, 0.3);
 
-	/* Fill with simple data */
-	for (int i = 0; i < 4096; i++)
-		pcm_input[i] = (int16_t)(i * 100);
-
-	/* Create encoder */
-	printf("Creating MP3 encoder...\n");
-	enc = mux_encoder_new(MUX_CODEC_MP3, 44100, 2, 2, NULL, 0);
-	if (!enc) {
-		fprintf(stderr, "Failed to create encoder\n");
+	if (th_encode(MUX_CODEC_MP3, 44100, 2, 2, NULL, 0,
+		      pcm, sizeof(pcm), NULL, 0, &muxed) != MUX_OK) {
+		fprintf(stderr, "encode failed\n");
 		return 1;
 	}
-	printf("Encoder created\n\n");
+	printf("Encoded %zu -> %zu bytes\n", sizeof(pcm), muxed.len);
 
-	/* Encode */
-	printf("Encoding %zu bytes...\n", sizeof(pcm_input));
-	ret = mux_encoder_encode(enc, pcm_input, sizeof(pcm_input),
-				 &input_consumed, MUX_STREAM_AUDIO);
-	printf("Encode returned: %d, consumed: %zu\n", ret, input_consumed);
-
-	if (ret != MUX_OK) {
-		fprintf(stderr, "Encode failed\n");
+	if (th_decode(MUX_CODEC_MP3, 2, muxed.data, muxed.len, &out) != MUX_OK) {
+		fprintf(stderr, "decode failed\n");
 		return 1;
 	}
+	printf("Decoded %zu bytes\n", out.audio.len);
 
-	/* Read output */
-	printf("Reading output...\n");
-	ret = mux_encoder_read(enc, muxed_buffer, sizeof(muxed_buffer),
-			       &output_written);
-	printf("Read returned: %d, written: %zu\n", ret, output_written);
-
-	/* Cleanup */
-	mux_encoder_destroy(enc);
-
-	printf("\n=== Test passed ===\n");
-	return 0;
+	ok = muxed.len > 0 && out.audio.len > 0;
+	th_buf_free(&muxed);
+	th_out_free(&out);
+	printf("%s\n", ok ? "=== Test passed ===" : "FAIL");
+	return ok ? 0 : 1;
 }
