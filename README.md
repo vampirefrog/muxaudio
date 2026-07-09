@@ -48,23 +48,48 @@ sudo make install
 
 ### Basic Usage
 
+muxaudio uses a **push model with callbacks**: you feed input in, and encoded/
+decoded data is delivered synchronously to a callback you register. There is no
+internal output buffer and no separate "read" step.
+
 ```c
 #include <mux.h>
 
-// Encode audio with FLAC
-struct mux_encoder *enc = mux_encoder_new(MUX_CODEC_FLAC, 44100, 2, NULL, 0);
-mux_encoder_encode(enc, pcm_data, pcm_size, &consumed, MUX_STREAM_AUDIO);
-mux_encoder_finalize(enc);
-mux_encoder_read(enc, output, sizeof(output), &written);
+// --- Encode audio with FLAC ---
+// Sink receives the muxed byte stream (write it to a file, socket, buffer...).
+int on_muxed(void *user, const void *data, size_t size) {
+    fwrite(data, 1, size, (FILE *)user);
+    return 0;  // non-zero aborts
+}
+
+struct mux_encoder *enc =
+    mux_encoder_new(MUX_CODEC_FLAC, 44100, 2, /*num_streams=*/2, NULL, 0,
+                    on_muxed, out_file);
+mux_encoder_encode(enc, pcm_data, pcm_size, MUX_STREAM_AUDIO);  // calls on_muxed
+mux_encoder_finalize(enc);                                      // flushes tail
 mux_encoder_destroy(enc);
 
-// Decode
-struct mux_decoder *dec = mux_decoder_new(MUX_CODEC_FLAC, NULL, 0);
-mux_decoder_decode(dec, input, input_size, &consumed);
+// --- Decode ---
+// Emit receives demuxed audio and side-channel data, in arbitrary chunks.
+int on_output(void *user, int stream_type, const void *data, size_t size,
+              int flags) {
+    if (stream_type == MUX_STREAM_AUDIO)
+        fwrite(data, 1, size, pcm_out);         // decoded PCM (int16)
+    else if (flags & MUX_EMIT_FRAME_END)
+        handle_event(data, size);               // a complete side-channel msg
+    return 0;
+}
+
+struct mux_decoder *dec =
+    mux_decoder_new(MUX_CODEC_FLAC, /*num_streams=*/2, NULL, 0, on_output, NULL);
+mux_decoder_decode(dec, input, input_size);     // may be called repeatedly
 mux_decoder_finalize(dec);
-mux_decoder_read(dec, pcm_out, sizeof(pcm_out), &written, &stream_type);
 mux_decoder_destroy(dec);
 ```
+
+Input can be fed in any chunking — down to one byte per `decode()` call — and
+produces identical output. `MUX_EMIT_FRAME_END` marks the chunk that completes a
+logical side-channel message, so discrete events can be reassembled.
 
 ---
 
@@ -118,6 +143,20 @@ struct mux_error_info {
 ```c
 #define MUX_STREAM_AUDIO        0  // Audio stream type
 #define MUX_STREAM_SIDE_CHANNEL 1  // Side channel (metadata) stream type
+#define MUX_EMIT_FRAME_END      1  // emit flag: this chunk completes a frame
+```
+
+### Callback Types
+
+```c
+// Encoder output: receives the muxed byte stream. Return 0 to continue,
+// non-zero to abort (propagated back out of the encode call).
+typedef int (*mux_sink_fn)(void *user, const void *data, size_t size);
+
+// Decoder output: receives demuxed audio / side-channel data in arbitrary
+// chunks. flags carries MUX_EMIT_FRAME_END on the chunk completing a frame.
+typedef int (*mux_emit_fn)(void *user, int stream_type,
+                           const void *data, size_t size, int flags);
 ```
 
 ### Error Codes
@@ -261,8 +300,11 @@ Create a new encoder.
 struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
                                     int sample_rate,
                                     int num_channels,
+                                    int num_streams,
                                     const struct mux_param *params,
-                                    int num_params);
+                                    int num_params,
+                                    mux_sink_fn sink,
+                                    void *sink_user);
 ```
 
 **Returns**: Encoder instance or `NULL` on error
@@ -270,16 +312,20 @@ struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
 - `codec_type`: Codec to use
 - `sample_rate`: Sample rate in Hz (e.g., 44100)
 - `num_channels`: Number of channels (1=mono, 2=stereo)
+- `num_streams`: `1` = passthrough (audio only), `2` = mux audio + side channel
 - `params`: Optional parameters array (can be `NULL`)
 - `num_params`: Number of parameters (0 if `params` is `NULL`)
+- `sink`: Callback receiving muxed output (required, non-NULL)
+- `sink_user`: Opaque pointer passed to `sink`
 
 **Example**:
 ```c
-// FLAC with compression level 8
+// FLAC with compression level 8, writing muxed output to a file
 struct mux_param params[] = {
     { .name = "compression", .value.i = 8 }
 };
-struct mux_encoder *enc = mux_encoder_new(MUX_CODEC_FLAC, 44100, 2, params, 1);
+struct mux_encoder *enc =
+    mux_encoder_new(MUX_CODEC_FLAC, 44100, 2, 2, params, 1, on_muxed, out_file);
 ```
 
 #### `mux_encoder_destroy`
@@ -299,8 +345,11 @@ int mux_encoder_init(struct mux_encoder *enc,
                      enum mux_codec_type codec_type,
                      int sample_rate,
                      int num_channels,
+                     int num_streams,
                      const struct mux_param *params,
-                     int num_params);
+                     int num_params,
+                     mux_sink_fn sink,
+                     void *sink_user);
 ```
 
 #### `mux_encoder_deinit`
@@ -319,47 +368,27 @@ Encode audio or side channel data.
 int mux_encoder_encode(struct mux_encoder *enc,
                        const void *input,
                        size_t input_size,
-                       size_t *input_consumed,
                        int stream_type);
 ```
 
-**Returns**: `MUX_OK` on success, error code on failure
+**Returns**: `MUX_OK`, a `MUX_ERROR_*` code, or the non-zero value returned by
+the sink. Consumes the entire input, emitting muxed output through the sink
+callback registered at construction.
 **Parameters**:
 - `enc`: Encoder instance
 - `input`: Input data (PCM audio as int16_t for audio, any data for side channel)
 - `input_size`: Size of input in bytes
-- `input_consumed`: Pointer to receive bytes consumed
 - `stream_type`: `MUX_STREAM_AUDIO` or `MUX_STREAM_SIDE_CHANNEL`
 
 **Example**:
 ```c
 int16_t audio[8192];
-size_t consumed;
-int ret = mux_encoder_encode(enc, audio, sizeof(audio), &consumed, MUX_STREAM_AUDIO);
-```
-
-#### `mux_encoder_read`
-Read encoded/multiplexed output.
-
-```c
-int mux_encoder_read(struct mux_encoder *enc,
-                     void *output,
-                     size_t output_size,
-                     size_t *output_written);
-```
-
-**Returns**: `MUX_OK`. If no data is currently available, `*output_written` is 0.
-**Example**:
-```c
-uint8_t buffer[4096];
-size_t written;
-while (mux_encoder_read(enc, buffer, sizeof(buffer), &written) == MUX_OK) {
-    // Write buffer to file/stream
-}
+int ret = mux_encoder_encode(enc, audio, sizeof(audio), MUX_STREAM_AUDIO);
+// encoded bytes were delivered to the sink during this call
 ```
 
 #### `mux_encoder_finalize`
-Flush any buffered data.
+Flush any codec-internal carry (e.g. a partial frame) to the sink.
 
 ```c
 int mux_encoder_finalize(struct mux_encoder *enc);
@@ -393,14 +422,23 @@ Create a new decoder.
 
 ```c
 struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
+                                    int num_streams,
                                     const struct mux_param *params,
-                                    int num_params);
+                                    int num_params,
+                                    mux_emit_fn emit,
+                                    void *emit_user);
 ```
 
 **Returns**: Decoder instance or `NULL` on error
+**Parameters**:
+- `num_streams`: `1` = passthrough, `2` = demux audio + side channel
+- `emit`: Callback receiving demuxed audio / side-channel data (required)
+- `emit_user`: Opaque pointer passed to `emit`
+
 **Example**:
 ```c
-struct mux_decoder *dec = mux_decoder_new(MUX_CODEC_OPUS, NULL, 0);
+struct mux_decoder *dec =
+    mux_decoder_new(MUX_CODEC_OPUS, 2, NULL, 0, on_output, NULL);
 ```
 
 #### `mux_decoder_destroy`
@@ -418,8 +456,11 @@ Initialize a statically allocated decoder.
 ```c
 int mux_decoder_init(struct mux_decoder *dec,
                      enum mux_codec_type codec_type,
+                     int num_streams,
                      const struct mux_param *params,
-                     int num_params);
+                     int num_params,
+                     mux_emit_fn emit,
+                     void *emit_user);
 ```
 
 #### `mux_decoder_deinit`
@@ -437,55 +478,30 @@ Decode multiplexed input.
 ```c
 int mux_decoder_decode(struct mux_decoder *dec,
                        const void *input,
-                       size_t input_size,
-                       size_t *input_consumed);
+                       size_t input_size);
 ```
 
-**Returns**: `MUX_OK` on success
+**Returns**: `MUX_OK`, a `MUX_ERROR_*` code, or the non-zero value returned by
+the emit callback. Consumes the entire input, delivering demuxed data through
+the emit callback registered at construction. May be called repeatedly with any
+chunking (down to one byte).
 **Parameters**:
 - `dec`: Decoder instance
 - `input`: Encoded/multiplexed input data
 - `input_size`: Size of input in bytes
-- `input_consumed`: Pointer to receive bytes consumed
 
 **Example**:
 ```c
 uint8_t encoded[4096];
-size_t consumed;
-mux_decoder_decode(dec, encoded, sizeof(encoded), &consumed);
+mux_decoder_decode(dec, encoded, sizeof(encoded));  // output goes to the emit cb
 ```
 
-#### `mux_decoder_read`
-Read decoded audio or side channel data.
-
-```c
-int mux_decoder_read(struct mux_decoder *dec,
-                     void *output,
-                     size_t output_size,
-                     size_t *output_written,
-                     int *stream_type);
-```
-
-**Returns**: `MUX_OK`. If no data is currently available, `*output_written` is 0.
-**Parameters**:
-- `stream_type`: Receives `MUX_STREAM_AUDIO` or `MUX_STREAM_SIDE_CHANNEL`
-
-**Example**:
-```c
-int16_t pcm[8192];
-size_t written;
-int stream_type;
-while (mux_decoder_read(dec, pcm, sizeof(pcm), &written, &stream_type) == MUX_OK) {
-    if (stream_type == MUX_STREAM_AUDIO) {
-        // Process audio
-    } else {
-        // Process side channel data
-    }
-}
-```
+The emit callback receives `stream_type` (`MUX_STREAM_AUDIO` or
+`MUX_STREAM_SIDE_CHANNEL`) per chunk; check `flags & MUX_EMIT_FRAME_END` to know
+when a discrete side-channel message is complete.
 
 #### `mux_decoder_finalize`
-Flush any buffered decoded data.
+Flush any codec-internal carry.
 
 ```c
 int mux_decoder_finalize(struct mux_decoder *dec);
@@ -565,62 +581,59 @@ demux -c flac -v < input.mux > output.raw
 #include <mux.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
+#include <math.h>
+
+// Simple growable byte buffer used by both callbacks.
+struct buf { uint8_t *data; size_t len, cap; };
+static int buf_append(void *user, const void *d, size_t n) {
+    struct buf *b = user;
+    if (b->len + n > b->cap) {
+        b->cap = b->cap ? b->cap * 2 : 4096;
+        while (b->cap < b->len + n) b->cap *= 2;
+        b->data = realloc(b->data, b->cap);
+    }
+    memcpy(b->data + b->len, d, n);
+    b->len += n;
+    return 0;
+}
+static int on_audio(void *user, int stream_type, const void *d, size_t n, int f) {
+    (void)f;
+    if (stream_type == MUX_STREAM_AUDIO) return buf_append(user, d, n);
+    return 0;
+}
 
 int main(void) {
-    // Allocate test audio
     int16_t audio[88200];  // 1 second stereo at 44100 Hz
-
-    // Generate 440 Hz sine wave
     for (int i = 0; i < 44100; i++) {
-        int16_t sample = 10000 * sin(2 * M_PI * 440 * i / 44100);
-        audio[i * 2] = sample;     // Left
-        audio[i * 2 + 1] = sample; // Right
+        int16_t s = 10000 * sin(2 * M_PI * 440 * i / 44100);
+        audio[i * 2] = audio[i * 2 + 1] = s;
     }
 
-    // Create FLAC encoder with max compression
-    struct mux_param params[] = {
-        { .name = "compression", .value.i = 8 }
-    };
-    struct mux_encoder *enc = mux_encoder_new(MUX_CODEC_FLAC, 44100, 2, params, 1);
-
-    // Encode
-    size_t consumed;
-    mux_encoder_encode(enc, audio, sizeof(audio), &consumed, MUX_STREAM_AUDIO);
+    // Encode: muxed bytes accumulate into 'muxed' via the sink.
+    struct buf muxed = {0};
+    struct mux_param params[] = { { .name = "compression", .value.i = 8 } };
+    struct mux_encoder *enc =
+        mux_encoder_new(MUX_CODEC_FLAC, 44100, 2, 2, params, 1, buf_append, &muxed);
+    mux_encoder_encode(enc, audio, sizeof(audio), MUX_STREAM_AUDIO);
     mux_encoder_finalize(enc);
-
-    // Read output
-    uint8_t output[65536];
-    size_t total = 0;
-    size_t written;
-    while (mux_encoder_read(enc, output + total, sizeof(output) - total, &written) == MUX_OK) {
-        total += written;
-    }
-
-    printf("Compressed %zu bytes to %zu bytes (%.1f%%)\n",
-           sizeof(audio), total, total * 100.0 / sizeof(audio));
-
     mux_encoder_destroy(enc);
+    printf("Compressed %zu bytes to %zu bytes (%.1f%%)\n",
+           sizeof(audio), muxed.len, muxed.len * 100.0 / sizeof(audio));
 
-    // Decode back
-    struct mux_decoder *dec = mux_decoder_new(MUX_CODEC_FLAC, NULL, 0);
-    mux_decoder_decode(dec, output, total, &consumed);
+    // Decode: decoded PCM accumulates into 'decoded' via the emit callback.
+    struct buf decoded = {0};
+    struct mux_decoder *dec =
+        mux_decoder_new(MUX_CODEC_FLAC, 2, NULL, 0, on_audio, &decoded);
+    mux_decoder_decode(dec, muxed.data, muxed.len);
     mux_decoder_finalize(dec);
-
-    int16_t decoded[88200];
-    int stream_type;
-    size_t decoded_size = 0;
-    while (mux_decoder_read(dec, decoded + decoded_size / sizeof(int16_t),
-                           sizeof(decoded) - decoded_size,
-                           &written, &stream_type) == MUX_OK) {
-        decoded_size += written;
-    }
-
-    // Verify lossless
-    if (memcmp(audio, decoded, sizeof(audio)) == 0) {
-        printf("Perfect lossless compression verified!\n");
-    }
-
     mux_decoder_destroy(dec);
+
+    if (decoded.len == sizeof(audio) && memcmp(audio, decoded.data, sizeof(audio)) == 0)
+        printf("Perfect lossless compression verified!\n");
+
+    free(muxed.data);
+    free(decoded.data);
     return 0;
 }
 ```
@@ -633,57 +646,56 @@ int main(void) {
 #include <stdint.h>
 #include <string.h>
 
-int main(void) {
-    // Create Opus encoder (48 kHz required for Opus)
-    struct mux_param params[] = {
-        { .name = "bitrate", .value.i = 64 }  // 64 kbps
-    };
-    struct mux_encoder *enc = mux_encoder_new(MUX_CODEC_OPUS, 48000, 2, params, 1);
+// Collect muxed output.
+struct buf { uint8_t *data; size_t len, cap; };
+static int sink(void *u, const void *d, size_t n) {
+    struct buf *b = u;
+    if (b->len + n > b->cap) { b->cap = (b->cap ? b->cap*2 : 4096);
+        while (b->cap < b->len+n) b->cap*=2; b->data = realloc(b->data,b->cap); }
+    memcpy(b->data + b->len, d, n); b->len += n; return 0;
+}
 
-    // Encode audio chunks with timestamp metadata
-    for (int chunk = 0; chunk < 10; chunk++) {
-        // Generate 20ms of audio (960 samples at 48kHz)
-        int16_t audio[960 * 2];
-        // ... fill with audio data ...
-
-        size_t consumed;
-        mux_encoder_encode(enc, audio, sizeof(audio), &consumed, MUX_STREAM_AUDIO);
-
-        // Add timestamp metadata for this chunk
-        char metadata[64];
-        snprintf(metadata, sizeof(metadata), "timestamp=%d", chunk * 20);
-        mux_encoder_encode(enc, metadata, strlen(metadata) + 1,
-                          &consumed, MUX_STREAM_SIDE_CHANNEL);
-    }
-
-    mux_encoder_finalize(enc);
-
-    // Read multiplexed output
-    uint8_t muxed[65536];
-    size_t total = 0;
-    size_t written;
-    while (mux_encoder_read(enc, muxed + total, sizeof(muxed) - total, &written) == MUX_OK) {
-        total += written;
-    }
-
-    mux_encoder_destroy(enc);
-
-    // Decode - audio and metadata come out interleaved
-    struct mux_decoder *dec = mux_decoder_new(MUX_CODEC_OPUS, NULL, 0);
-    mux_decoder_decode(dec, muxed, total, &consumed);
-    mux_decoder_finalize(dec);
-
-    uint8_t buffer[8192];
-    int stream_type;
-    while (mux_decoder_read(dec, buffer, sizeof(buffer), &written, &stream_type) == MUX_OK) {
-        if (stream_type == MUX_STREAM_AUDIO) {
-            printf("Audio: %zu bytes\n", written);
-        } else {
-            printf("Metadata: %s\n", (char *)buffer);
+// On decode, audio and metadata are delivered interleaved. Reassemble each
+// side-channel message using MUX_EMIT_FRAME_END.
+static char msg[256]; static size_t msg_len;
+static int on_out(void *u, int st, const void *d, size_t n, int flags) {
+    (void)u;
+    if (st == MUX_STREAM_AUDIO) {
+        printf("Audio: %zu bytes\n", n);
+    } else {
+        memcpy(msg + msg_len, d, n); msg_len += n;
+        if (flags & MUX_EMIT_FRAME_END) {
+            msg[msg_len] = 0; printf("Metadata: %s\n", msg); msg_len = 0;
         }
     }
+    return 0;
+}
 
+int main(void) {
+    struct buf muxed = {0};
+    struct mux_param params[] = { { .name = "bitrate", .value.i = 64 } };
+    struct mux_encoder *enc =
+        mux_encoder_new(MUX_CODEC_OPUS, 48000, 2, 2, params, 1, sink, &muxed);
+
+    for (int chunk = 0; chunk < 10; chunk++) {
+        int16_t audio[960 * 2];   // 20ms at 48kHz
+        // ... fill with audio data ...
+        mux_encoder_encode(enc, audio, sizeof(audio), MUX_STREAM_AUDIO);
+
+        char meta[64];
+        int len = snprintf(meta, sizeof(meta), "timestamp=%d", chunk * 20);
+        mux_encoder_encode(enc, meta, len, MUX_STREAM_SIDE_CHANNEL);
+    }
+    mux_encoder_finalize(enc);
+    mux_encoder_destroy(enc);
+
+    struct mux_decoder *dec =
+        mux_decoder_new(MUX_CODEC_OPUS, 2, NULL, 0, on_out, NULL);
+    mux_decoder_decode(dec, muxed.data, muxed.len);
+    mux_decoder_finalize(dec);
     mux_decoder_destroy(dec);
+
+    free(muxed.data);
     return 0;
 }
 ```
