@@ -574,14 +574,12 @@ if(IS_WASM)
         _mux_encoder_new
         _mux_encoder_destroy
         _mux_encoder_encode
-        _mux_encoder_read
         _mux_encoder_finalize
         _mux_encoder_get_error
         _mux_encoder_clear_error
         _mux_decoder_new
         _mux_decoder_destroy
         _mux_decoder_decode
-        _mux_decoder_read
         _mux_decoder_finalize
         _mux_decoder_get_error
         _mux_decoder_clear_error
