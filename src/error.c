@@ -19,30 +19,31 @@ static const char *error_strings[] = {
 	[-MUX_ERROR_INIT] = "Initialization error"
 };
 
-const char *mux_error_string(int error_code)
-{
+const char *mux_error_string(int error_code) {
 	int index;
 
-	if (error_code == 0)
+	if(error_code == 0)
 		return error_strings[0];
 
 	index = -error_code;
-	if (index < 0 || index >= (int)(sizeof(error_strings) / sizeof(error_strings[0])))
+	if(index < 0 || index >= (int)(sizeof(error_strings) / sizeof(error_strings[0])))
 		return "Unknown error";
 
-	if (!error_strings[index])
+	if(!error_strings[index])
 		return "Unknown error";
 
 	return error_strings[index];
 }
 
-void mux_encoder_set_error(struct mux_encoder *enc, int code,
-			   const char *message,
-			   const char *library_name,
-			   int library_code,
-			   const char *library_msg)
-{
-	if (!enc)
+void mux_encoder_set_error(
+	struct mux_encoder *enc,
+	int code,
+	const char *message,
+	const char *library_name,
+	int library_code,
+	const char *library_msg
+) {
+	if(!enc)
 		return;
 
 	enc->error.code = code;
@@ -52,13 +53,15 @@ void mux_encoder_set_error(struct mux_encoder *enc, int code,
 	enc->error.library_msg = library_msg;
 }
 
-void mux_decoder_set_error(struct mux_decoder *dec, int code,
-			   const char *message,
-			   const char *library_name,
-			   int library_code,
-			   const char *library_msg)
-{
-	if (!dec)
+void mux_decoder_set_error(
+	struct mux_decoder *dec,
+	int code,
+	const char *message,
+	const char *library_name,
+	int library_code,
+	const char *library_msg
+) {
+	if(!dec)
 		return;
 
 	dec->error.code = code;
@@ -68,33 +71,29 @@ void mux_decoder_set_error(struct mux_decoder *dec, int code,
 	dec->error.library_msg = library_msg;
 }
 
-const struct mux_error_info *mux_encoder_get_error(struct mux_encoder *enc)
-{
-	if (!enc)
+const struct mux_error_info *mux_encoder_get_error(struct mux_encoder *enc) {
+	if(!enc)
 		return NULL;
 
 	return &enc->error;
 }
 
-const struct mux_error_info *mux_decoder_get_error(struct mux_decoder *dec)
-{
-	if (!dec)
+const struct mux_error_info *mux_decoder_get_error(struct mux_decoder *dec) {
+	if(!dec)
 		return NULL;
 
 	return &dec->error;
 }
 
-void mux_encoder_clear_error(struct mux_encoder *enc)
-{
-	if (!enc)
+void mux_encoder_clear_error(struct mux_encoder *enc) {
+	if(!enc)
 		return;
 
 	memset(&enc->error, 0, sizeof(enc->error));
 }
 
-void mux_decoder_clear_error(struct mux_decoder *dec)
-{
-	if (!dec)
+void mux_decoder_clear_error(struct mux_decoder *dec) {
+	if(!dec)
 		return;
 
 	memset(&dec->error, 0, sizeof(dec->error));

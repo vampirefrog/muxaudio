@@ -12,7 +12,7 @@ extern "C" {
 /*
  * Stream types for multiplexed data
  */
-#define MUX_STREAM_AUDIO        0
+#define MUX_STREAM_AUDIO 0
 #define MUX_STREAM_SIDE_CHANNEL 1
 
 /*
@@ -45,26 +45,26 @@ enum mux_param_type {
 /*
  * Return codes
  */
-#define MUX_OK              0
-#define MUX_ERROR          -1
-#define MUX_ERROR_NOMEM    -2
-#define MUX_ERROR_INVAL    -3
-#define MUX_ERROR_NOCODEC  -4
-#define MUX_ERROR_EOF      -5
-#define MUX_ERROR_ENCODE   -6  /* Encoding error */
-#define MUX_ERROR_DECODE   -7  /* Decoding error */
-#define MUX_ERROR_FORMAT   -8  /* Format/container error */
-#define MUX_ERROR_INIT     -9  /* Initialization error */
+#define MUX_OK 0
+#define MUX_ERROR -1
+#define MUX_ERROR_NOMEM -2
+#define MUX_ERROR_INVAL -3
+#define MUX_ERROR_NOCODEC -4
+#define MUX_ERROR_EOF -5
+#define MUX_ERROR_ENCODE -6 /* Encoding error */
+#define MUX_ERROR_DECODE -7 /* Decoding error */
+#define MUX_ERROR_FORMAT -8 /* Format/container error */
+#define MUX_ERROR_INIT -9	/* Initialization error */
 
 /*
  * Error information structure
  */
 struct mux_error_info {
-	int code;                  /* mux library error code */
-	const char *message;       /* human-readable message */
-	int library_code;          /* underlying library error code */
-	const char *library_name;  /* name of underlying library */
-	const char *library_msg;   /* library-specific error message */
+	int code;				  /* mux library error code */
+	const char *message;	  /* human-readable message */
+	int library_code;		  /* underlying library error code */
+	const char *library_name; /* name of underlying library */
+	const char *library_msg;  /* library-specific error message */
 };
 
 /*
@@ -141,8 +141,7 @@ typedef int (*mux_sink_fn)(void *user, const void *data, size_t size);
  * they were encoded (it frames itself, if it needs to). Return 0 to continue;
  * a non-zero return aborts and is propagated out of the decode call.
  */
-typedef int (*mux_emit_fn)(void *user, int stream_type,
-			   const void *data, size_t size);
+typedef int (*mux_emit_fn)(void *user, int stream_type, const void *data, size_t size);
 
 /*
  * Codec discovery
@@ -158,21 +157,25 @@ const char *mux_codec_to_name(enum mux_codec_type codec);
 /*
  * Parameter introspection
  */
-int mux_get_encoder_params(enum mux_codec_type codec_type,
-			   const struct mux_param_desc **params,
-			   int *count);
+int mux_get_encoder_params(
+	enum mux_codec_type codec_type,
+	const struct mux_param_desc **params,
+	int *count
+);
 
-int mux_get_decoder_params(enum mux_codec_type codec_type,
-			   const struct mux_param_desc **params,
-			   int *count);
+int mux_get_decoder_params(
+	enum mux_codec_type codec_type,
+	const struct mux_param_desc **params,
+	int *count
+);
 
 /*
  * Sample rate constraints
  */
 struct mux_sample_rate_list {
-	const int *rates;     /* Array of supported sample rates */
-	int count;            /* Number of rates in array */
-	int is_range;         /* If true, rates[0]=min, rates[1]=max */
+	const int *rates; /* Array of supported sample rates */
+	int count;		  /* Number of rates in array */
+	int is_range;	  /* If true, rates[0]=min, rates[1]=max */
 };
 
 /*
@@ -181,36 +184,42 @@ struct mux_sample_rate_list {
  * If is_range is true, any rate between rates[0] and rates[1] is supported.
  * If is_range is false, only the discrete rates in the array are supported.
  */
-int mux_get_supported_sample_rates(enum mux_codec_type codec_type,
-				    struct mux_sample_rate_list *list);
+int mux_get_supported_sample_rates(
+	enum mux_codec_type codec_type,
+	struct mux_sample_rate_list *list
+);
 
 /*
  * Encoder - static allocation
  * 'sink' receives the muxed output and is required (may not be NULL).
  */
-int mux_encoder_init(struct mux_encoder *enc,
-		     enum mux_codec_type codec_type,
-		     int sample_rate,
-		     int num_channels,
-		     int num_streams,
-		     const struct mux_param *params,
-		     int num_params,
-		     mux_sink_fn sink,
-		     void *sink_user);
+int mux_encoder_init(
+	struct mux_encoder *enc,
+	enum mux_codec_type codec_type,
+	int sample_rate,
+	int num_channels,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_sink_fn sink,
+	void *sink_user
+);
 
 void mux_encoder_deinit(struct mux_encoder *enc);
 
 /*
  * Encoder - dynamic allocation
  */
-struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
-				    int sample_rate,
-				    int num_channels,
-				    int num_streams,
-				    const struct mux_param *params,
-				    int num_params,
-				    mux_sink_fn sink,
-				    void *sink_user);
+struct mux_encoder *mux_encoder_new(
+	enum mux_codec_type codec_type,
+	int sample_rate,
+	int num_channels,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_sink_fn sink,
+	void *sink_user
+);
 
 void mux_encoder_destroy(struct mux_encoder *enc);
 
@@ -218,25 +227,29 @@ void mux_encoder_destroy(struct mux_encoder *enc);
  * Decoder - static allocation
  * 'emit' receives the demuxed output and is required (may not be NULL).
  */
-int mux_decoder_init(struct mux_decoder *dec,
-		     enum mux_codec_type codec_type,
-		     int num_streams,
-		     const struct mux_param *params,
-		     int num_params,
-		     mux_emit_fn emit,
-		     void *emit_user);
+int mux_decoder_init(
+	struct mux_decoder *dec,
+	enum mux_codec_type codec_type,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_emit_fn emit,
+	void *emit_user
+);
 
 void mux_decoder_deinit(struct mux_decoder *dec);
 
 /*
  * Decoder - dynamic allocation
  */
-struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
-				    int num_streams,
-				    const struct mux_param *params,
-				    int num_params,
-				    mux_emit_fn emit,
-				    void *emit_user);
+struct mux_decoder *mux_decoder_new(
+	enum mux_codec_type codec_type,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_emit_fn emit,
+	void *emit_user
+);
 
 void mux_decoder_destroy(struct mux_decoder *dec);
 
@@ -246,10 +259,12 @@ void mux_decoder_destroy(struct mux_decoder *dec);
  * registered at construction. Returns MUX_OK, a MUX_ERROR_* code, or the
  * non-zero value returned by the sink.
  */
-int mux_encoder_encode(struct mux_encoder *enc,
-		       const void *input,
-		       size_t input_size,
-		       int stream_type);
+int mux_encoder_encode(
+	struct mux_encoder *enc,
+	const void *input,
+	size_t input_size,
+	int stream_type
+);
 
 /*
  * Finalize encoder: flush any codec-internal carry (e.g. a partial frame) to
@@ -264,9 +279,7 @@ int mux_encoder_finalize(struct mux_encoder *enc);
  * single byte per call. Returns MUX_OK, a MUX_ERROR_* code, or the non-zero
  * value returned by the emit callback.
  */
-int mux_decoder_decode(struct mux_decoder *dec,
-		       const void *input,
-		       size_t input_size);
+int mux_decoder_decode(struct mux_decoder *dec, const void *input, size_t input_size);
 
 /*
  * Finalize decoder: flush any codec-internal carry. Call once when the input

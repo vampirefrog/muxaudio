@@ -8,56 +8,20 @@
  * Codec information table
  */
 static const struct mux_codec_info codec_info_table[] = {
-	{
-		.type = MUX_CODEC_PCM,
-		.name = "pcm",
-		.description = "Raw PCM audio"
-	},
-	{
-		.type = MUX_CODEC_OPUS,
-		.name = "opus",
-		.description = "Opus audio codec"
-	},
-	{
-		.type = MUX_CODEC_VORBIS,
-		.name = "vorbis",
-		.description = "Vorbis audio codec"
-	},
-	{
-		.type = MUX_CODEC_FLAC,
-		.name = "flac",
-		.description = "FLAC lossless audio codec"
-	},
-	{
-		.type = MUX_CODEC_MP3,
-		.name = "mp3",
-		.description = "MP3 audio codec"
-	},
-	{
-		.type = MUX_CODEC_AAC,
-		.name = "aac",
-		.description = "AAC audio codec"
-	},
-	{
-		.type = MUX_CODEC_ALAW,
-		.name = "alaw",
-		.description = "G.711 A-law codec"
-	},
-	{
-		.type = MUX_CODEC_MULAW,
-		.name = "mulaw",
-		.description = "G.711 mu-law codec"
-	},
-	{
-		.type = MUX_CODEC_AMR,
-		.name = "amr",
-		.description = "AMR-NB (Adaptive Multi-Rate Narrowband) codec"
-	},
-	{
-		.type = MUX_CODEC_AMR_WB,
-		.name = "amr-wb",
-		.description = "AMR-WB (Adaptive Multi-Rate Wideband) codec"
-	}
+	{.type = MUX_CODEC_PCM, .name = "pcm", .description = "Raw PCM audio"},
+	{.type = MUX_CODEC_OPUS, .name = "opus", .description = "Opus audio codec"},
+	{.type = MUX_CODEC_VORBIS, .name = "vorbis", .description = "Vorbis audio codec"},
+	{.type = MUX_CODEC_FLAC, .name = "flac", .description = "FLAC lossless audio codec"},
+	{.type = MUX_CODEC_MP3, .name = "mp3", .description = "MP3 audio codec"},
+	{.type = MUX_CODEC_AAC, .name = "aac", .description = "AAC audio codec"},
+	{.type = MUX_CODEC_ALAW, .name = "alaw", .description = "G.711 A-law codec"},
+	{.type = MUX_CODEC_MULAW, .name = "mulaw", .description = "G.711 mu-law codec"},
+	{.type = MUX_CODEC_AMR,
+	 .name = "amr",
+	 .description = "AMR-NB (Adaptive Multi-Rate Narrowband) codec"},
+	{.type = MUX_CODEC_AMR_WB,
+	 .name = "amr-wb",
+	 .description = "AMR-WB (Adaptive Multi-Rate Wideband) codec"}
 };
 
 /*
@@ -105,9 +69,8 @@ static const struct mux_codec_ops *codec_ops_table[MUX_CODEC_MAX] = {
 #endif
 };
 
-int mux_list_codecs(const struct mux_codec_info **codecs, int *count)
-{
-	if (!codecs || !count)
+int mux_list_codecs(const struct mux_codec_info **codecs, int *count) {
+	if(!codecs || !count)
 		return MUX_ERROR_INVAL;
 
 	*codecs = codec_info_table;
@@ -116,15 +79,14 @@ int mux_list_codecs(const struct mux_codec_info **codecs, int *count)
 	return MUX_OK;
 }
 
-int mux_codec_from_name(const char *name, enum mux_codec_type *codec)
-{
+int mux_codec_from_name(const char *name, enum mux_codec_type *codec) {
 	int i;
 
-	if (!name || !codec)
+	if(!name || !codec)
 		return MUX_ERROR_INVAL;
 
-	for (i = 0; i < MUX_CODEC_MAX; i++) {
-		if (strcmp(codec_info_table[i].name, name) == 0) {
+	for(i = 0; i < MUX_CODEC_MAX; i++) {
+		if(strcmp(codec_info_table[i].name, name) == 0) {
 			*codec = codec_info_table[i].type;
 			return MUX_OK;
 		}
@@ -133,33 +95,32 @@ int mux_codec_from_name(const char *name, enum mux_codec_type *codec)
 	return MUX_ERROR_INVAL;
 }
 
-const char *mux_codec_to_name(enum mux_codec_type codec)
-{
-	if (codec < 0 || codec >= MUX_CODEC_MAX)
+const char *mux_codec_to_name(enum mux_codec_type codec) {
+	if(codec < 0 || codec >= MUX_CODEC_MAX)
 		return NULL;
 
 	return codec_info_table[codec].name;
 }
 
-const struct mux_codec_ops *mux_get_codec_ops(enum mux_codec_type type)
-{
-	if (type < 0 || type >= MUX_CODEC_MAX)
+const struct mux_codec_ops *mux_get_codec_ops(enum mux_codec_type type) {
+	if(type < 0 || type >= MUX_CODEC_MAX)
 		return NULL;
 
 	return codec_ops_table[type];
 }
 
-int mux_get_encoder_params(enum mux_codec_type codec_type,
-			   const struct mux_param_desc **params,
-			   int *count)
-{
+int mux_get_encoder_params(
+	enum mux_codec_type codec_type,
+	const struct mux_param_desc **params,
+	int *count
+) {
 	const struct mux_codec_ops *ops;
 
-	if (!params || !count)
+	if(!params || !count)
 		return MUX_ERROR_INVAL;
 
 	ops = mux_get_codec_ops(codec_type);
-	if (!ops)
+	if(!ops)
 		return MUX_ERROR_NOCODEC;
 
 	*params = ops->encoder_params;
@@ -168,17 +129,18 @@ int mux_get_encoder_params(enum mux_codec_type codec_type,
 	return MUX_OK;
 }
 
-int mux_get_decoder_params(enum mux_codec_type codec_type,
-			   const struct mux_param_desc **params,
-			   int *count)
-{
+int mux_get_decoder_params(
+	enum mux_codec_type codec_type,
+	const struct mux_param_desc **params,
+	int *count
+) {
 	const struct mux_codec_ops *ops;
 
-	if (!params || !count)
+	if(!params || !count)
 		return MUX_ERROR_INVAL;
 
 	ops = mux_get_codec_ops(codec_type);
-	if (!ops)
+	if(!ops)
 		return MUX_ERROR_NOCODEC;
 
 	*params = ops->decoder_params;
@@ -187,16 +149,17 @@ int mux_get_decoder_params(enum mux_codec_type codec_type,
 	return MUX_OK;
 }
 
-int mux_get_supported_sample_rates(enum mux_codec_type codec_type,
-				    struct mux_sample_rate_list *list)
-{
+int mux_get_supported_sample_rates(
+	enum mux_codec_type codec_type,
+	struct mux_sample_rate_list *list
+) {
 	const struct mux_codec_ops *ops;
 
-	if (!list)
+	if(!list)
 		return MUX_ERROR_INVAL;
 
 	ops = mux_get_codec_ops(codec_type);
-	if (!ops)
+	if(!ops)
 		return MUX_ERROR_NOCODEC;
 
 	list->rates = ops->supported_sample_rates;
@@ -209,19 +172,16 @@ int mux_get_supported_sample_rates(enum mux_codec_type codec_type,
 /*
  * Output helpers
  */
-int mux_encoder_emit(struct mux_encoder *enc, const void *data, size_t size)
-{
-	if (!enc || !enc->sink)
+int mux_encoder_emit(struct mux_encoder *enc, const void *data, size_t size) {
+	if(!enc || !enc->sink)
 		return MUX_ERROR_INVAL;
-	if (size == 0)
+	if(size == 0)
 		return MUX_OK;
 	return enc->sink(enc->sink_user, data, size);
 }
 
-int mux_decoder_emit(struct mux_decoder *dec, int stream_type,
-		     const void *data, size_t size)
-{
-	if (!dec || !dec->emit)
+int mux_decoder_emit(struct mux_decoder *dec, int stream_type, const void *data, size_t size) {
+	if(!dec || !dec->emit)
 		return MUX_ERROR_INVAL;
 	return dec->emit(dec->emit_user, stream_type, data, size);
 }
@@ -229,29 +189,30 @@ int mux_decoder_emit(struct mux_decoder *dec, int stream_type,
 /*
  * Encoder - static allocation
  */
-int mux_encoder_init(struct mux_encoder *enc,
-		     enum mux_codec_type codec_type,
-		     int sample_rate,
-		     int num_channels,
-		     int num_streams,
-		     const struct mux_param *params,
-		     int num_params,
-		     mux_sink_fn sink,
-		     void *sink_user)
-{
+int mux_encoder_init(
+	struct mux_encoder *enc,
+	enum mux_codec_type codec_type,
+	int sample_rate,
+	int num_channels,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_sink_fn sink,
+	void *sink_user
+) {
 	const struct mux_codec_ops *ops;
 	int ret;
 
-	if (!enc || !sink)
+	if(!enc || !sink)
 		return MUX_ERROR_INVAL;
 
-	if (num_streams != 1 && num_streams != 2)
+	if(num_streams != 1 && num_streams != 2)
 		return MUX_ERROR_INVAL;
 
 	memset(enc, 0, sizeof(*enc));
 
 	ops = mux_get_codec_ops(codec_type);
-	if (!ops || !ops->encoder_init)
+	if(!ops || !ops->encoder_init)
 		return MUX_ERROR_NOCODEC;
 
 	enc->codec_type = codec_type;
@@ -262,20 +223,18 @@ int mux_encoder_init(struct mux_encoder *enc,
 	enc->sink = sink;
 	enc->sink_user = sink_user;
 
-	ret = ops->encoder_init(enc, sample_rate, num_channels,
-				params, num_params);
-	if (ret != MUX_OK)
+	ret = ops->encoder_init(enc, sample_rate, num_channels, params, num_params);
+	if(ret != MUX_OK)
 		return ret;
 
 	return MUX_OK;
 }
 
-void mux_encoder_deinit(struct mux_encoder *enc)
-{
-	if (!enc)
+void mux_encoder_deinit(struct mux_encoder *enc) {
+	if(!enc)
 		return;
 
-	if (enc->ops && enc->ops->encoder_deinit)
+	if(enc->ops && enc->ops->encoder_deinit)
 		enc->ops->encoder_deinit(enc);
 
 	memset(enc, 0, sizeof(*enc));
@@ -284,25 +243,35 @@ void mux_encoder_deinit(struct mux_encoder *enc)
 /*
  * Encoder - dynamic allocation
  */
-struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
-				    int sample_rate,
-				    int num_channels,
-				    int num_streams,
-				    const struct mux_param *params,
-				    int num_params,
-				    mux_sink_fn sink,
-				    void *sink_user)
-{
+struct mux_encoder *mux_encoder_new(
+	enum mux_codec_type codec_type,
+	int sample_rate,
+	int num_channels,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_sink_fn sink,
+	void *sink_user
+) {
 	struct mux_encoder *enc;
 	int ret;
 
 	enc = calloc(1, sizeof(*enc));
-	if (!enc)
+	if(!enc)
 		return NULL;
 
-	ret = mux_encoder_init(enc, codec_type, sample_rate, num_channels,
-			       num_streams, params, num_params, sink, sink_user);
-	if (ret != MUX_OK) {
+	ret = mux_encoder_init(
+		enc,
+		codec_type,
+		sample_rate,
+		num_channels,
+		num_streams,
+		params,
+		num_params,
+		sink,
+		sink_user
+	);
+	if(ret != MUX_OK) {
 		free(enc);
 		return NULL;
 	}
@@ -310,9 +279,8 @@ struct mux_encoder *mux_encoder_new(enum mux_codec_type codec_type,
 	return enc;
 }
 
-void mux_encoder_destroy(struct mux_encoder *enc)
-{
-	if (!enc)
+void mux_encoder_destroy(struct mux_encoder *enc) {
+	if(!enc)
 		return;
 
 	mux_encoder_deinit(enc);
@@ -322,27 +290,28 @@ void mux_encoder_destroy(struct mux_encoder *enc)
 /*
  * Decoder - static allocation
  */
-int mux_decoder_init(struct mux_decoder *dec,
-		     enum mux_codec_type codec_type,
-		     int num_streams,
-		     const struct mux_param *params,
-		     int num_params,
-		     mux_emit_fn emit,
-		     void *emit_user)
-{
+int mux_decoder_init(
+	struct mux_decoder *dec,
+	enum mux_codec_type codec_type,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_emit_fn emit,
+	void *emit_user
+) {
 	const struct mux_codec_ops *ops;
 	int ret;
 
-	if (!dec || !emit)
+	if(!dec || !emit)
 		return MUX_ERROR_INVAL;
 
-	if (num_streams != 1 && num_streams != 2)
+	if(num_streams != 1 && num_streams != 2)
 		return MUX_ERROR_INVAL;
 
 	memset(dec, 0, sizeof(*dec));
 
 	ops = mux_get_codec_ops(codec_type);
-	if (!ops || !ops->decoder_init)
+	if(!ops || !ops->decoder_init)
 		return MUX_ERROR_NOCODEC;
 
 	dec->codec_type = codec_type;
@@ -352,18 +321,17 @@ int mux_decoder_init(struct mux_decoder *dec,
 	dec->emit_user = emit_user;
 
 	ret = ops->decoder_init(dec, params, num_params);
-	if (ret != MUX_OK)
+	if(ret != MUX_OK)
 		return ret;
 
 	return MUX_OK;
 }
 
-void mux_decoder_deinit(struct mux_decoder *dec)
-{
-	if (!dec)
+void mux_decoder_deinit(struct mux_decoder *dec) {
+	if(!dec)
 		return;
 
-	if (dec->ops && dec->ops->decoder_deinit)
+	if(dec->ops && dec->ops->decoder_deinit)
 		dec->ops->decoder_deinit(dec);
 
 	memset(dec, 0, sizeof(*dec));
@@ -372,23 +340,23 @@ void mux_decoder_deinit(struct mux_decoder *dec)
 /*
  * Decoder - dynamic allocation
  */
-struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
-				    int num_streams,
-				    const struct mux_param *params,
-				    int num_params,
-				    mux_emit_fn emit,
-				    void *emit_user)
-{
+struct mux_decoder *mux_decoder_new(
+	enum mux_codec_type codec_type,
+	int num_streams,
+	const struct mux_param *params,
+	int num_params,
+	mux_emit_fn emit,
+	void *emit_user
+) {
 	struct mux_decoder *dec;
 	int ret;
 
 	dec = calloc(1, sizeof(*dec));
-	if (!dec)
+	if(!dec)
 		return NULL;
 
-	ret = mux_decoder_init(dec, codec_type, num_streams, params, num_params,
-			       emit, emit_user);
-	if (ret != MUX_OK) {
+	ret = mux_decoder_init(dec, codec_type, num_streams, params, num_params, emit, emit_user);
+	if(ret != MUX_OK) {
 		free(dec);
 		return NULL;
 	}
@@ -396,9 +364,8 @@ struct mux_decoder *mux_decoder_new(enum mux_codec_type codec_type,
 	return dec;
 }
 
-void mux_decoder_destroy(struct mux_decoder *dec)
-{
-	if (!dec)
+void mux_decoder_destroy(struct mux_decoder *dec) {
+	if(!dec)
 		return;
 
 	mux_decoder_deinit(dec);
@@ -408,24 +375,24 @@ void mux_decoder_destroy(struct mux_decoder *dec)
 /*
  * Encoding operations
  */
-int mux_encoder_encode(struct mux_encoder *enc,
-		       const void *input,
-		       size_t input_size,
-		       int stream_type)
-{
-	if (!enc || !enc->ops || !enc->ops->encoder_encode)
+int mux_encoder_encode(
+	struct mux_encoder *enc,
+	const void *input,
+	size_t input_size,
+	int stream_type
+) {
+	if(!enc || !enc->ops || !enc->ops->encoder_encode)
 		return MUX_ERROR_INVAL;
 
 	return enc->ops->encoder_encode(enc, input, input_size, stream_type);
 }
 
-int mux_encoder_finalize(struct mux_encoder *enc)
-{
-	if (!enc || !enc->ops)
+int mux_encoder_finalize(struct mux_encoder *enc) {
+	if(!enc || !enc->ops)
 		return MUX_ERROR_INVAL;
 
 	/* encoder_finalize is optional - some codecs don't need it */
-	if (!enc->ops->encoder_finalize)
+	if(!enc->ops->encoder_finalize)
 		return MUX_OK;
 
 	return enc->ops->encoder_finalize(enc);
@@ -434,23 +401,19 @@ int mux_encoder_finalize(struct mux_encoder *enc)
 /*
  * Decoding operations
  */
-int mux_decoder_decode(struct mux_decoder *dec,
-		       const void *input,
-		       size_t input_size)
-{
-	if (!dec || !dec->ops || !dec->ops->decoder_decode)
+int mux_decoder_decode(struct mux_decoder *dec, const void *input, size_t input_size) {
+	if(!dec || !dec->ops || !dec->ops->decoder_decode)
 		return MUX_ERROR_INVAL;
 
 	return dec->ops->decoder_decode(dec, input, input_size);
 }
 
-int mux_decoder_finalize(struct mux_decoder *dec)
-{
-	if (!dec || !dec->ops)
+int mux_decoder_finalize(struct mux_decoder *dec) {
+	if(!dec || !dec->ops)
 		return MUX_ERROR_INVAL;
 
 	/* decoder_finalize is optional - some codecs don't need it */
-	if (!dec->ops->decoder_finalize)
+	if(!dec->ops->decoder_finalize)
 		return MUX_OK;
 
 	return dec->ops->decoder_finalize(dec);

@@ -22,31 +22,31 @@ struct mux_codec_ops;
  */
 struct mux_codec_ops {
 	/* Encoder operations */
-	int (*encoder_init)(struct mux_encoder *enc,
-			    int sample_rate,
-			    int num_channels,
-			    const struct mux_param *params,
-			    int num_params);
+	int (*encoder_init)(
+		struct mux_encoder *enc,
+		int sample_rate,
+		int num_channels,
+		const struct mux_param *params,
+		int num_params
+	);
 
 	void (*encoder_deinit)(struct mux_encoder *enc);
 
-	int (*encoder_encode)(struct mux_encoder *enc,
-			      const void *input,
-			      size_t input_size,
-			      int stream_type);
+	int (*encoder_encode)(
+		struct mux_encoder *enc,
+		const void *input,
+		size_t input_size,
+		int stream_type
+	);
 
 	int (*encoder_finalize)(struct mux_encoder *enc);
 
 	/* Decoder operations */
-	int (*decoder_init)(struct mux_decoder *dec,
-			    const struct mux_param *params,
-			    int num_params);
+	int (*decoder_init)(struct mux_decoder *dec, const struct mux_param *params, int num_params);
 
 	void (*decoder_deinit)(struct mux_decoder *dec);
 
-	int (*decoder_decode)(struct mux_decoder *dec,
-			      const void *input,
-			      size_t input_size);
+	int (*decoder_decode)(struct mux_decoder *dec, const void *input, size_t input_size);
 
 	int (*decoder_finalize)(struct mux_decoder *dec);
 
@@ -59,7 +59,7 @@ struct mux_codec_ops {
 	/* Sample rate constraints */
 	const int *supported_sample_rates;
 	int sample_rate_count;
-	int sample_rate_is_range;  /* If true, first two values are min/max */
+	int sample_rate_is_range; /* If true, first two values are min/max */
 };
 
 /*
@@ -70,7 +70,7 @@ struct mux_encoder {
 	const struct mux_codec_ops *ops;
 	int sample_rate;
 	int num_channels;
-	int num_streams;  /* 1 = passthrough, 2 = muxed audio + side channel */
+	int num_streams; /* 1 = passthrough, 2 = muxed audio + side channel */
 
 	/* Output sink for the muxed byte stream */
 	mux_sink_fn sink;
@@ -89,7 +89,7 @@ struct mux_encoder {
 struct mux_decoder {
 	enum mux_codec_type codec_type;
 	const struct mux_codec_ops *ops;
-	int num_streams;  /* 1 = passthrough, 2 = muxed audio + side channel */
+	int num_streams; /* 1 = passthrough, 2 = muxed audio + side channel */
 
 	/* Emit callback for demuxed audio + side channel */
 	mux_emit_fn emit;
@@ -107,8 +107,7 @@ struct mux_decoder {
  * its return value (0 = continue, non-zero = abort).
  */
 int mux_encoder_emit(struct mux_encoder *enc, const void *data, size_t size);
-int mux_decoder_emit(struct mux_decoder *dec, int stream_type,
-		     const void *data, size_t size);
+int mux_decoder_emit(struct mux_decoder *dec, int stream_type, const void *data, size_t size);
 
 /*
  * Codec registry
@@ -118,17 +117,23 @@ const struct mux_codec_ops *mux_get_codec_ops(enum mux_codec_type type);
 /*
  * Error handling helpers
  */
-void mux_encoder_set_error(struct mux_encoder *enc, int code,
-			   const char *message,
-			   const char *library_name,
-			   int library_code,
-			   const char *library_msg);
+void mux_encoder_set_error(
+	struct mux_encoder *enc,
+	int code,
+	const char *message,
+	const char *library_name,
+	int library_code,
+	const char *library_msg
+);
 
-void mux_decoder_set_error(struct mux_decoder *dec, int code,
-			   const char *message,
-			   const char *library_name,
-			   int library_code,
-			   const char *library_msg);
+void mux_decoder_set_error(
+	struct mux_decoder *dec,
+	int code,
+	const char *message,
+	const char *library_name,
+	int library_code,
+	const char *library_msg
+);
 
 /*
  * LEB128 varint encoding utility
@@ -149,9 +154,14 @@ int mux_leb128_encode(uint64_t value, uint8_t *output, size_t output_size);
  *   arrives in; it does not preserve per-frame boundaries (neither stream
  *   needs them - side-channel data frames itself).
  */
-int mux_leb128_emit_frame(const void *payload, size_t payload_size,
-			  int stream_type, int num_streams,
-			  mux_sink_fn sink, void *user);
+int mux_leb128_emit_frame(
+	const void *payload,
+	size_t payload_size,
+	int stream_type,
+	int num_streams,
+	mux_sink_fn sink,
+	void *user
+);
 
 /*
  * Emit only a frame's LEB128 header, declaring a payload of 'payload_size'
@@ -159,8 +169,13 @@ int mux_leb128_emit_frame(const void *payload, size_t payload_size,
  * itself - lets transforming codecs (e.g. G.711) convert through a fixed stack
  * buffer with no heap allocation. No-op in passthrough mode (num_streams == 1).
  */
-int mux_leb128_emit_header(size_t payload_size, int stream_type,
-			   int num_streams, mux_sink_fn sink, void *user);
+int mux_leb128_emit_header(
+	size_t payload_size,
+	int stream_type,
+	int num_streams,
+	mux_sink_fn sink,
+	void *user
+);
 
 struct mux_leb128_parser {
 	/*
@@ -175,10 +190,14 @@ struct mux_leb128_parser {
 };
 
 void mux_leb128_parser_init(struct mux_leb128_parser *p);
-int mux_leb128_parser_feed(struct mux_leb128_parser *p,
-			   const void *input, size_t size,
-			   int num_streams,
-			   mux_emit_fn emit, void *user);
+int mux_leb128_parser_feed(
+	struct mux_leb128_parser *p,
+	const void *input,
+	size_t size,
+	int num_streams,
+	mux_emit_fn emit,
+	void *user
+);
 
 /*
  * Codec-specific operations (implemented by each codec)

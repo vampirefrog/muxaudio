@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "mux.h"
 #include "mux_internal.h"
+#include <fdk-aac/aacdecoder_lib.h>
+#include <fdk-aac/aacenc_lib.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <fdk-aac/aacenc_lib.h>
-#include <fdk-aac/aacdecoder_lib.h>
 
 /*
  * AAC codec (push / streaming, LEB128-framed, raw AAC frames)
@@ -28,9 +28,9 @@ struct aac_encoder_data {
 	int num_channels;
 	int bitrate;
 
-	int16_t *frame_buf;        /* one-frame carry, input_buf_size samples */
-	int frame_samples;         /* input_buf_size (interleaved samples/frame) */
-	int pending;               /* interleaved samples currently carried */
+	int16_t *frame_buf; /* one-frame carry, input_buf_size samples */
+	int frame_samples;	/* input_buf_size (interleaved samples/frame) */
+	int pending;		/* interleaved samples currently carried */
 
 	uint8_t *output_buf;
 	int output_buf_size;
@@ -44,32 +44,37 @@ struct aac_decoder_data {
 };
 
 static const struct mux_param_desc aac_encoder_params[] = {
-	{ .name = "bitrate", .description = "Bitrate in kbps",
-	  .type = MUX_PARAM_TYPE_INT, .range.i = { .min = 8, .max = 512, .def = 128 } },
-	{ .name = "profile", .description = "AAC profile (2=LC, 5=HE, 29=HEv2)",
-	  .type = MUX_PARAM_TYPE_INT, .range.i = { .min = 2, .max = 29, .def = 2 } }
+	{.name = "bitrate",
+	 .description = "Bitrate in kbps",
+	 .type = MUX_PARAM_TYPE_INT,
+	 .range.i = {.min = 8, .max = 512, .def = 128}},
+	{.name = "profile",
+	 .description = "AAC profile (2=LC, 5=HE, 29=HEv2)",
+	 .type = MUX_PARAM_TYPE_INT,
+	 .range.i = {.min = 2, .max = 29, .def = 2}}
 };
 
-static const int aac_sample_rates[] = {
-	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200, 96000
-};
+static const int aac_sample_rates[] =
+	{8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200, 96000};
 
-static const struct mux_param *find_param(const struct mux_param *params,
-					  int num_params, const char *name)
-{
+static const struct mux_param *
+find_param(const struct mux_param *params, int num_params, const char *name) {
 	int i;
-	for (i = 0; i < num_params; i++)
-		if (strcmp(params[i].name, name) == 0)
+	for(i = 0; i < num_params; i++)
+		if(strcmp(params[i].name, name) == 0)
 			return &params[i];
 	return NULL;
 }
 
 /* ---- encoder ------------------------------------------------------------ */
 
-static int mux_aac_encoder_init(struct mux_encoder *enc, int sample_rate,
-				int num_channels, const struct mux_param *params,
-				int num_params)
-{
+static int mux_aac_encoder_init(
+	struct mux_encoder *enc,
+	int sample_rate,
+	int num_channels,
+	const struct mux_param *params,
+	int num_params
+) {
 	struct aac_encoder_data *data;
 	const struct mux_param *param;
 	int bitrate = 128000, profile = 2;
@@ -78,10 +83,15 @@ static int mux_aac_encoder_init(struct mux_encoder *enc, int sample_rate,
 	AACENC_InfoStruct info;
 
 	data = calloc(1, sizeof(*data));
-	if (!data) {
-		mux_encoder_set_error(enc, MUX_ERROR_NOMEM,
-				      "Failed to allocate AAC encoder data",
-				      NULL, 0, NULL);
+	if(!data) {
+		mux_encoder_set_error(
+			enc,
+			MUX_ERROR_NOMEM,
+			"Failed to allocate AAC encoder data",
+			NULL,
+			0,
+			NULL
+		);
 		return MUX_ERROR_NOMEM;
 	}
 
@@ -90,26 +100,43 @@ static int mux_aac_encoder_init(struct mux_encoder *enc, int sample_rate,
 	data->num_channels = num_channels;
 
 	param = find_param(params, num_params, "bitrate");
-	if (param) bitrate = param->value.i * 1000;
+	if(param)
+		bitrate = param->value.i * 1000;
 	param = find_param(params, num_params, "profile");
-	if (param) profile = param->value.i;
+	if(param)
+		profile = param->value.i;
 	data->bitrate = bitrate;
 
-	switch (num_channels) {
-	case 1: channel_mode = MODE_1; break;
-	case 2: channel_mode = MODE_2; break;
+	switch(num_channels) {
+	case 1:
+		channel_mode = MODE_1;
+		break;
+	case 2:
+		channel_mode = MODE_2;
+		break;
 	default:
-		mux_encoder_set_error(enc, MUX_ERROR_INVAL,
-				      "Unsupported channel count for AAC",
-				      NULL, 0, NULL);
+		mux_encoder_set_error(
+			enc,
+			MUX_ERROR_INVAL,
+			"Unsupported channel count for AAC",
+			NULL,
+			0,
+			NULL
+		);
 		free(data);
 		return MUX_ERROR_INVAL;
 	}
 
 	err = aacEncOpen(&data->enc, 0, num_channels);
-	if (err != AACENC_OK) {
-		mux_encoder_set_error(enc, MUX_ERROR_INIT, "Failed to open AAC encoder",
-				      "libfdk-aac", err, NULL);
+	if(err != AACENC_OK) {
+		mux_encoder_set_error(
+			enc,
+			MUX_ERROR_INIT,
+			"Failed to open AAC encoder",
+			"libfdk-aac",
+			err,
+			NULL
+		);
 		free(data);
 		return MUX_ERROR_INIT;
 	}
@@ -124,20 +151,30 @@ static int mux_aac_encoder_init(struct mux_encoder *enc, int sample_rate,
 	aacEncoder_SetParam(data->enc, AACENC_TRANSMUX, TT_MP4_ADTS);
 
 	err = aacEncEncode(data->enc, NULL, NULL, NULL, NULL);
-	if (err != AACENC_OK) {
-		mux_encoder_set_error(enc, MUX_ERROR_INIT,
-				      "Failed to initialize AAC encoder",
-				      "libfdk-aac", err, NULL);
+	if(err != AACENC_OK) {
+		mux_encoder_set_error(
+			enc,
+			MUX_ERROR_INIT,
+			"Failed to initialize AAC encoder",
+			"libfdk-aac",
+			err,
+			NULL
+		);
 		aacEncClose(&data->enc);
 		free(data);
 		return MUX_ERROR_INIT;
 	}
 
 	err = aacEncInfo(data->enc, &info);
-	if (err != AACENC_OK) {
-		mux_encoder_set_error(enc, MUX_ERROR_INIT,
-				      "Failed to get AAC encoder info",
-				      "libfdk-aac", err, NULL);
+	if(err != AACENC_OK) {
+		mux_encoder_set_error(
+			enc,
+			MUX_ERROR_INIT,
+			"Failed to get AAC encoder info",
+			"libfdk-aac",
+			err,
+			NULL
+		);
 		aacEncClose(&data->enc);
 		free(data);
 		return MUX_ERROR_INIT;
@@ -147,9 +184,15 @@ static int mux_aac_encoder_init(struct mux_encoder *enc, int sample_rate,
 	data->output_buf_size = info.maxOutBufBytes;
 	data->frame_buf = malloc(data->frame_samples * sizeof(int16_t));
 	data->output_buf = malloc(data->output_buf_size);
-	if (!data->frame_buf || !data->output_buf) {
-		mux_encoder_set_error(enc, MUX_ERROR_NOMEM,
-				      "Failed to allocate AAC buffers", NULL, 0, NULL);
+	if(!data->frame_buf || !data->output_buf) {
+		mux_encoder_set_error(
+			enc,
+			MUX_ERROR_NOMEM,
+			"Failed to allocate AAC buffers",
+			NULL,
+			0,
+			NULL
+		);
 		aacEncClose(&data->enc);
 		free(data->frame_buf);
 		free(data->output_buf);
@@ -161,14 +204,13 @@ static int mux_aac_encoder_init(struct mux_encoder *enc, int sample_rate,
 	return MUX_OK;
 }
 
-static void mux_aac_encoder_deinit(struct mux_encoder *enc)
-{
+static void mux_aac_encoder_deinit(struct mux_encoder *enc) {
 	struct aac_encoder_data *data;
 
-	if (!enc || !enc->codec_data)
+	if(!enc || !enc->codec_data)
 		return;
 	data = enc->codec_data;
-	if (data->enc)
+	if(data->enc)
 		aacEncClose(&data->enc);
 	free(data->frame_buf);
 	free(data->output_buf);
@@ -178,19 +220,22 @@ static void mux_aac_encoder_deinit(struct mux_encoder *enc)
 
 /* Encode exactly 'nsamples' interleaved samples from 'pcm' and emit the frame.
  * nsamples is normally frame_samples; -1 signals EOF flush. */
-static int aac_encode_frame(struct mux_encoder *enc, struct aac_encoder_data *data,
-			    const int16_t *pcm, int nsamples)
-{
-	AACENC_BufDesc in_buf = { 0 }, out_buf = { 0 };
-	AACENC_InArgs in_args = { 0 };
-	AACENC_OutArgs out_args = { 0 };
+static int aac_encode_frame(
+	struct mux_encoder *enc,
+	struct aac_encoder_data *data,
+	const int16_t *pcm,
+	int nsamples
+) {
+	AACENC_BufDesc in_buf = {0}, out_buf = {0};
+	AACENC_InArgs in_args = {0};
+	AACENC_OutArgs out_args = {0};
 	int in_identifier = IN_AUDIO_DATA, out_identifier = OUT_BITSTREAM_DATA;
 	int in_size, in_elem_size = sizeof(int16_t);
 	int out_size, out_elem_size = 1;
 	void *in_ptr = (void *)pcm, *out_ptr = data->output_buf;
 	AACENC_ERROR err;
 
-	if (nsamples > 0) {
+	if(nsamples > 0) {
 		in_size = nsamples * sizeof(int16_t);
 		in_buf.numBufs = 1;
 		in_buf.bufs = &in_ptr;
@@ -199,7 +244,7 @@ static int aac_encode_frame(struct mux_encoder *enc, struct aac_encoder_data *da
 		in_buf.bufElSizes = &in_elem_size;
 		in_args.numInSamples = nsamples;
 	} else {
-		in_args.numInSamples = -1;   /* EOF */
+		in_args.numInSamples = -1; /* EOF */
 	}
 
 	out_size = data->output_buf_size;
@@ -210,45 +255,64 @@ static int aac_encode_frame(struct mux_encoder *enc, struct aac_encoder_data *da
 	out_buf.bufElSizes = &out_elem_size;
 
 	err = aacEncEncode(data->enc, &in_buf, &out_buf, &in_args, &out_args);
-	if (err != AACENC_OK && err != AACENC_ENCODE_EOF) {
-		mux_encoder_set_error(enc, MUX_ERROR_ENCODE, "AAC encoding failed",
-				      "libfdk-aac", err, NULL);
+	if(err != AACENC_OK && err != AACENC_ENCODE_EOF) {
+		mux_encoder_set_error(
+			enc,
+			MUX_ERROR_ENCODE,
+			"AAC encoding failed",
+			"libfdk-aac",
+			err,
+			NULL
+		);
 		return MUX_ERROR_ENCODE;
 	}
 
-	if (out_args.numOutBytes > 0)
-		return mux_leb128_emit_frame(data->output_buf, out_args.numOutBytes,
-					     MUX_STREAM_AUDIO, enc->num_streams,
-					     enc->sink, enc->sink_user);
+	if(out_args.numOutBytes > 0)
+		return mux_leb128_emit_frame(
+			data->output_buf,
+			out_args.numOutBytes,
+			MUX_STREAM_AUDIO,
+			enc->num_streams,
+			enc->sink,
+			enc->sink_user
+		);
 	return MUX_OK;
 }
 
-static int mux_aac_encoder_encode(struct mux_encoder *enc, const void *input,
-				  size_t input_size, int stream_type)
-{
+static int mux_aac_encoder_encode(
+	struct mux_encoder *enc,
+	const void *input,
+	size_t input_size,
+	int stream_type
+) {
 	struct aac_encoder_data *data;
 	const int16_t *pcm;
 	int avail, idx, frame, rem, ret;
 
-	if (!enc || (!input && input_size))
+	if(!enc || (!input && input_size))
 		return MUX_ERROR_INVAL;
 	data = enc->codec_data;
-	if (!data)
+	if(!data)
 		return MUX_ERROR_INVAL;
-	if (input_size == 0)
+	if(input_size == 0)
 		return MUX_OK;
 
-	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
-		return mux_leb128_emit_frame(input, input_size, stream_type,
-					     enc->num_streams,
-					     enc->sink, enc->sink_user);
+	if(stream_type == MUX_STREAM_SIDE_CHANNEL)
+		return mux_leb128_emit_frame(
+			input,
+			input_size,
+			stream_type,
+			enc->num_streams,
+			enc->sink,
+			enc->sink_user
+		);
 
 	pcm = input;
 	frame = data->frame_samples;
-	avail = (int)(input_size / sizeof(int16_t));   /* interleaved samples */
+	avail = (int)(input_size / sizeof(int16_t)); /* interleaved samples */
 	idx = 0;
 
-	if (data->pending > 0) {
+	if(data->pending > 0) {
 		int need = frame - data->pending;
 		int take = avail < need ? avail : need;
 
@@ -256,24 +320,24 @@ static int mux_aac_encoder_encode(struct mux_encoder *enc, const void *input,
 		data->pending += take;
 		idx += take;
 
-		if (data->pending < frame)
+		if(data->pending < frame)
 			return MUX_OK;
 
 		ret = aac_encode_frame(enc, data, data->frame_buf, frame);
-		if (ret)
+		if(ret)
 			return ret;
 		data->pending = 0;
 	}
 
-	while (avail - idx >= frame) {
+	while(avail - idx >= frame) {
 		ret = aac_encode_frame(enc, data, pcm + idx, frame);
-		if (ret)
+		if(ret)
 			return ret;
 		idx += frame;
 	}
 
 	rem = avail - idx;
-	if (rem > 0) {
+	if(rem > 0) {
 		memcpy(data->frame_buf, pcm + idx, rem * sizeof(int16_t));
 		data->pending = rem;
 	}
@@ -281,23 +345,25 @@ static int mux_aac_encoder_encode(struct mux_encoder *enc, const void *input,
 	return MUX_OK;
 }
 
-static int mux_aac_encoder_finalize(struct mux_encoder *enc)
-{
+static int mux_aac_encoder_finalize(struct mux_encoder *enc) {
 	struct aac_encoder_data *data;
 	int ret;
 
-	if (!enc)
+	if(!enc)
 		return MUX_ERROR_INVAL;
 	data = enc->codec_data;
-	if (!data)
+	if(!data)
 		return MUX_ERROR_INVAL;
 
 	/* Zero-pad and encode the final sub-frame tail, then flush EOF. */
-	if (data->pending > 0) {
-		memset(data->frame_buf + data->pending, 0,
-		       (data->frame_samples - data->pending) * sizeof(int16_t));
+	if(data->pending > 0) {
+		memset(
+			data->frame_buf + data->pending,
+			0,
+			(data->frame_samples - data->pending) * sizeof(int16_t)
+		);
 		ret = aac_encode_frame(enc, data, data->frame_buf, data->frame_samples);
-		if (ret)
+		if(ret)
 			return ret;
 		data->pending = 0;
 	}
@@ -307,28 +373,37 @@ static int mux_aac_encoder_finalize(struct mux_encoder *enc)
 
 /* ---- decoder ------------------------------------------------------------ */
 
-static int mux_aac_decoder_init(struct mux_decoder *dec,
-				const struct mux_param *params, int num_params)
-{
+static int
+mux_aac_decoder_init(struct mux_decoder *dec, const struct mux_param *params, int num_params) {
 	struct aac_decoder_data *data;
 
 	(void)params;
 	(void)num_params;
 
 	data = calloc(1, sizeof(*data));
-	if (!data) {
-		mux_decoder_set_error(dec, MUX_ERROR_NOMEM,
-				      "Failed to allocate AAC decoder data",
-				      NULL, 0, NULL);
+	if(!data) {
+		mux_decoder_set_error(
+			dec,
+			MUX_ERROR_NOMEM,
+			"Failed to allocate AAC decoder data",
+			NULL,
+			0,
+			NULL
+		);
 		return MUX_ERROR_NOMEM;
 	}
 	mux_leb128_parser_init(&data->parser);
 
 	data->dec = aacDecoder_Open(TT_MP4_ADTS, 1);
-	if (!data->dec) {
-		mux_decoder_set_error(dec, MUX_ERROR_INIT,
-				      "Failed to create AAC decoder",
-				      "libfdk-aac", 0, NULL);
+	if(!data->dec) {
+		mux_decoder_set_error(
+			dec,
+			MUX_ERROR_INIT,
+			"Failed to create AAC decoder",
+			"libfdk-aac",
+			0,
+			NULL
+		);
 		free(data);
 		return MUX_ERROR_INIT;
 	}
@@ -337,14 +412,13 @@ static int mux_aac_decoder_init(struct mux_decoder *dec,
 	return MUX_OK;
 }
 
-static void mux_aac_decoder_deinit(struct mux_decoder *dec)
-{
+static void mux_aac_decoder_deinit(struct mux_decoder *dec) {
 	struct aac_decoder_data *data;
 
-	if (!dec || !dec->codec_data)
+	if(!dec || !dec->codec_data)
 		return;
 	data = dec->codec_data;
-	if (data->dec)
+	if(data->dec)
 		aacDecoder_Close(data->dec);
 	free(data);
 	dec->codec_data = NULL;
@@ -354,36 +428,33 @@ static void mux_aac_decoder_deinit(struct mux_decoder *dec)
  * fdk-aac reports AAC_DEC_TRANSPORT_SYNC_ERROR between ADTS frames as a normal
  * resync (it recovers on the next call), so we only stop on NOT_ENOUGH_BITS;
  * an idle guard bounds the loop in case a stream never yields another frame. */
-static int aac_drain(struct mux_decoder *dec, struct aac_decoder_data *data)
-{
+static int aac_drain(struct mux_decoder *dec, struct aac_decoder_data *data) {
 	int idle = 0;
 
-	for (;;) {
+	for(;;) {
 		int16_t pcm_buf[8192];
 		CStreamInfo *info;
 		AAC_DECODER_ERROR err;
 
-		err = aacDecoder_DecodeFrame(data->dec, pcm_buf,
-					     sizeof(pcm_buf) / sizeof(int16_t), 0);
-		if (err == AAC_DEC_NOT_ENOUGH_BITS)
+		err = aacDecoder_DecodeFrame(data->dec, pcm_buf, sizeof(pcm_buf) / sizeof(int16_t), 0);
+		if(err == AAC_DEC_NOT_ENOUGH_BITS)
 			break;
-		if (err != AAC_DEC_OK) {
-			if (++idle > 64)
-				break;   /* stuck resyncing - give up for now */
+		if(err != AAC_DEC_OK) {
+			if(++idle > 64)
+				break; /* stuck resyncing - give up for now */
 			continue;
 		}
 		idle = 0;
 
 		info = aacDecoder_GetStreamInfo(data->dec);
-		if (info && info->numChannels > 0 && info->frameSize > 0) {
-			size_t sz = (size_t)info->frameSize * info->numChannels *
-				    sizeof(int16_t);
+		if(info && info->numChannels > 0 && info->frameSize > 0) {
+			size_t sz = (size_t)info->frameSize * info->numChannels * sizeof(int16_t);
 			int r;
 
 			data->sample_rate = info->sampleRate;
 			data->num_channels = info->numChannels;
 			r = mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm_buf, sz);
-			if (r)
+			if(r)
 				return r;
 		}
 	}
@@ -392,62 +463,68 @@ static int aac_drain(struct mux_decoder *dec, struct aac_decoder_data *data)
 
 /* Parser emit shim: feed the raw ADTS byte stream to fdk-aac (which syncs on
  * ADTS headers itself); side channel passes through. */
-static int aac_parser_emit(void *user, int stream_type, const void *chunk,
-			   size_t size)
-{
+static int aac_parser_emit(void *user, int stream_type, const void *chunk, size_t size) {
 	struct mux_decoder *dec = user;
 	struct aac_decoder_data *data = dec->codec_data;
 	const uint8_t *in = chunk;
 	size_t off = 0;
 
-	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
+	if(stream_type == MUX_STREAM_SIDE_CHANNEL)
 		return mux_decoder_emit(dec, stream_type, chunk, size);
 
-	while (off < size) {
-		UCHAR *inbuf[1] = { (UCHAR *)(in + off) };
-		UINT insize[1] = { (UINT)(size - off) };
+	while(off < size) {
+		UCHAR *inbuf[1] = {(UCHAR *)(in + off)};
+		UINT insize[1] = {(UINT)(size - off)};
 		UINT valid = (UINT)(size - off);
 		AAC_DECODER_ERROR err;
 		size_t consumed;
 		int r;
 
 		err = aacDecoder_Fill(data->dec, inbuf, insize, &valid);
-		if (err != AAC_DEC_OK) {
-			mux_decoder_set_error(dec, MUX_ERROR_DECODE,
-					      "aacDecoder_Fill failed",
-					      "libfdk-aac", err, NULL);
+		if(err != AAC_DEC_OK) {
+			mux_decoder_set_error(
+				dec,
+				MUX_ERROR_DECODE,
+				"aacDecoder_Fill failed",
+				"libfdk-aac",
+				err,
+				NULL
+			);
 			return MUX_ERROR_DECODE;
 		}
 		consumed = (size - off) - valid;
 		off += consumed;
 
 		r = aac_drain(dec, data);
-		if (r)
+		if(r)
 			return r;
 
-		if (consumed == 0)
-			break;   /* internal buffer full and nothing decodable */
+		if(consumed == 0)
+			break; /* internal buffer full and nothing decodable */
 	}
 	return MUX_OK;
 }
 
-static int mux_aac_decoder_decode(struct mux_decoder *dec, const void *input,
-				  size_t input_size)
-{
+static int mux_aac_decoder_decode(struct mux_decoder *dec, const void *input, size_t input_size) {
 	struct aac_decoder_data *data;
 
-	if (!dec || (!input && input_size))
+	if(!dec || (!input && input_size))
 		return MUX_ERROR_INVAL;
 	data = dec->codec_data;
-	if (!data)
+	if(!data)
 		return MUX_ERROR_INVAL;
 
-	return mux_leb128_parser_feed(&data->parser, input, input_size,
-				      dec->num_streams, aac_parser_emit, dec);
+	return mux_leb128_parser_feed(
+		&data->parser,
+		input,
+		input_size,
+		dec->num_streams,
+		aac_parser_emit,
+		dec
+	);
 }
 
-static int mux_aac_decoder_finalize(struct mux_decoder *dec)
-{
+static int mux_aac_decoder_finalize(struct mux_decoder *dec) {
 	/* Frames decode as their ADTS bytes arrive; fdk-aac's ~1-frame delay is
 	 * left unflushed (flushing loops emitting concealment) - negligible for a
 	 * lossy stream. */

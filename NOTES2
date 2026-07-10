@@ -1,0 +1,51 @@
+TTS_API_KEY=af407617b522af9b29275865f6794ed5 TTS_API_URL=https://tts.vampi.tech/api 
+curl 'https://tts.vampi.tech/api/listVoices?' -H "authorization: $TTS_API_KEY"
+curl 'https://tts.vampi.tech/api/synthesizeSpeech?text=Type+your+text+here.&voice=ATT-DT-14-Mike16&type=text&rate=0&volume=100&outType=wav&sampleRate=16000&bitDepth=16&channels=1&events=65534&transport=stream' -H "authorization: $TTS_API_KEY" --output type.wav
+
+
+Write a python script to generate the SAPI WAV files from the TIMIT sentences using the API described below:
+
+curl "$TTS_API_URL/listVoices' -H "authorization: $TTS_API_KEY"
+curl "$TTS_API_URL/synthesizeSpeech?text=<sentence>&voice=<voice_id>&type=text&rate=0&volume=100&outType=wav&sampleRate=16000&bitDepth=16&channels=1&events=65534&transport=stream" -H "authorization: $TTS_API_KEY" --output file.wav
+
+Besides the TTS API key parameter, I'd also like to have a concurrency setting to call the API simultaneously so we can make use of the API server's multithreading to generate the audio faster.
+
+While writing this script, let me run it and I'll feed you the output when there is an error.
+
+
+We now have all the base data we need. I'd like to preprocess this and rebuild the training data as a data dir with a structure of: ./data/<source>/<speaker>/<sentence_id>.csv, where source is TIMIT or SAPI, speaker is the speaker ID or voice ID, and sentence_id is the TIMIT sentence id. The CSV files should contain a line for each frame, including the 28-dim feature vectors and the one hot encoded viseme output, which we will use for training.
+
+Do you think this is a good step? If so, I'd like a script to generate these csv files from the TIMIT dataset, and another script to generate them from the SAPI WAV files with the custom EVNT chunk. The filenames should make it easy to find the original wav file so that we can later display it in the visualizer (but don't worry about the visualizer yet).
+
+
+I'd like to update the training data visualization page in several ways:
+- For the animated character, I'd like to use this talking frog avatar which I have placed in the 'talking frog.svg' file. It has a #mouth layer which contains layers for each viseme.
+- The sentence select should contain the sentence itself, limited to 50 characters with an ellipsis if it is too long.
+- The sentence select should remain the same when selecting another source or voice
+- When selecting another source, select the first voice for that source
+- Only show the two sources, without "Select source..." and select the first one by default (TIMIT)
+- Above the select controls, for source, speaker and sentence, add some arrows for next and previous
+- For every select control add some keyboard shortcuts for next and previous. For source, s and S. For speaker, p and P. For sentence, n and N.
+- Display the 13 MFCCs as one graphic, then the log mean energy as its own plot, and the deltas as their own pair of graphics as well
+- Also display a waveform and a log spectrogram and make sure all of these graphics can be clicked to seek the audio
+- Keep the mouth shape buttons, remove the mouth shape select control, and add the viseme names on the buttons
+- Always include all sentences in the sentence select, but if files are missing for some sentences, disable those options.
+- Do the same for voices. If their directories are empty, disable the voice option.
+
+
+Let's now update the training script. Make sure it reads the csv files we prepared earlier, and I'd like to draw a graph of the accuracy over each epoch, and other graphs too if such a package is readily available. I remember there being a ready made web interface to visualize progress while it's training. Also let me know how to use the script to resume training if I had to interrupt it.
+
+
+I noticed that the MFCC coefficient graphic has a lot of energy to it, it looks very yellow with the color scheme you chose, especially compared to the log spectrogram. Is this normal or does it have too much energy? The delta mfcc looks darker but still very low contrast.
+
+Could you normalize the waveform when displaying it and when playing it? The TIMIT recordings are low volume.
+
+
+
+Let's check that there is some gain applied to the input before or after pre emphasis, like they mention in the paper a "hard limiter".
+
+Help me make the preprocess_sapi.py script faster. It seems that it's not taking up CPU at all, I don't see it in top processes. I think it's slow for some reason.
+
+I'd like to add a loading indicator on the visualization page, one for each graphic, including the inference ones, which will include a separate load operation. I'd like to be able to cancel loading when I change the select inputs. If possible I'd like to be able to cancel computations on the server as well. I'd also like to load whatever audio is available when the page loads (currently I have to select something).
+
+Let's now continue implementing the C++ version. I'd like to have a command line tool (check if there is one already) that takes audio as input and outputs visemes, and we can use the visualization html page to compare its output to the python output.

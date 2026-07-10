@@ -19,12 +19,13 @@ struct pcm_decoder_data {
 /*
  * Encoder: stateless
  */
-static int pcm_encoder_init(struct mux_encoder *enc,
-			    int sample_rate,
-			    int num_channels,
-			    const struct mux_param *params,
-			    int num_params)
-{
+static int pcm_encoder_init(
+	struct mux_encoder *enc,
+	int sample_rate,
+	int num_channels,
+	const struct mux_param *params,
+	int num_params
+) {
 	(void)sample_rate;
 	(void)num_channels;
 	(void)params;
@@ -34,47 +35,43 @@ static int pcm_encoder_init(struct mux_encoder *enc,
 	return MUX_OK;
 }
 
-static void pcm_encoder_deinit(struct mux_encoder *enc)
-{
-	(void)enc;
-}
+static void pcm_encoder_deinit(struct mux_encoder *enc) { (void)enc; }
 
-static int pcm_encoder_encode(struct mux_encoder *enc,
-			      const void *input,
-			      size_t input_size,
-			      int stream_type)
-{
-	if (!enc || (!input && input_size))
+static int
+pcm_encoder_encode(struct mux_encoder *enc, const void *input, size_t input_size, int stream_type) {
+	if(!enc || (!input && input_size))
 		return MUX_ERROR_INVAL;
 
-	if (input_size == 0)
+	if(input_size == 0)
 		return MUX_OK;
 
-	return mux_leb128_emit_frame(input, input_size, stream_type,
-				     enc->num_streams,
-				     enc->sink, enc->sink_user);
+	return mux_leb128_emit_frame(
+		input,
+		input_size,
+		stream_type,
+		enc->num_streams,
+		enc->sink,
+		enc->sink_user
+	);
 }
 
-static int pcm_encoder_finalize(struct mux_encoder *enc)
-{
-	(void)enc;  /* nothing buffered */
+static int pcm_encoder_finalize(struct mux_encoder *enc) {
+	(void)enc; /* nothing buffered */
 	return MUX_OK;
 }
 
 /*
  * Decoder: streaming demux parser
  */
-static int pcm_decoder_init(struct mux_decoder *dec,
-			    const struct mux_param *params,
-			    int num_params)
-{
+static int
+pcm_decoder_init(struct mux_decoder *dec, const struct mux_param *params, int num_params) {
 	struct pcm_decoder_data *data;
 
 	(void)params;
 	(void)num_params;
 
 	data = calloc(1, sizeof(*data));
-	if (!data)
+	if(!data)
 		return MUX_ERROR_NOMEM;
 
 	mux_leb128_parser_init(&data->parser);
@@ -82,42 +79,42 @@ static int pcm_decoder_init(struct mux_decoder *dec,
 	return MUX_OK;
 }
 
-static void pcm_decoder_deinit(struct mux_decoder *dec)
-{
-	if (!dec)
+static void pcm_decoder_deinit(struct mux_decoder *dec) {
+	if(!dec)
 		return;
 	free(dec->codec_data);
 	dec->codec_data = NULL;
 }
 
-static int pcm_decoder_decode(struct mux_decoder *dec,
-			      const void *input,
-			      size_t input_size)
-{
+static int pcm_decoder_decode(struct mux_decoder *dec, const void *input, size_t input_size) {
 	struct pcm_decoder_data *data;
 
-	if (!dec || (!input && input_size))
+	if(!dec || (!input && input_size))
 		return MUX_ERROR_INVAL;
 
 	data = dec->codec_data;
-	if (!data)
+	if(!data)
 		return MUX_ERROR_INVAL;
 
-	return mux_leb128_parser_feed(&data->parser, input, input_size,
-				      dec->num_streams,
-				      dec->emit, dec->emit_user);
+	return mux_leb128_parser_feed(
+		&data->parser,
+		input,
+		input_size,
+		dec->num_streams,
+		dec->emit,
+		dec->emit_user
+	);
 }
 
-static int pcm_decoder_finalize(struct mux_decoder *dec)
-{
-	(void)dec;  /* nothing buffered */
+static int pcm_decoder_finalize(struct mux_decoder *dec) {
+	(void)dec; /* nothing buffered */
 	return MUX_OK;
 }
 
 /*
  * PCM sample rate constraints (supports any rate)
  */
-static const int pcm_sample_rates[] = { 1000, 384000 };  /* Min/max range */
+static const int pcm_sample_rates[] = {1000, 384000}; /* Min/max range */
 
 const struct mux_codec_ops mux_codec_pcm_ops = {
 	.encoder_init = pcm_encoder_init,
