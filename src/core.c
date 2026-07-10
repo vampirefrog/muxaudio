@@ -219,11 +219,11 @@ int mux_encoder_emit(struct mux_encoder *enc, const void *data, size_t size)
 }
 
 int mux_decoder_emit(struct mux_decoder *dec, int stream_type,
-		     const void *data, size_t size, int flags)
+		     const void *data, size_t size)
 {
 	if (!dec || !dec->emit)
 		return MUX_ERROR_INVAL;
-	return dec->emit(dec->emit_user, stream_type, data, size, flags);
+	return dec->emit(dec->emit_user, stream_type, data, size);
 }
 
 /*

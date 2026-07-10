@@ -425,7 +425,7 @@ static int vorbis_emit_pcm(struct mux_decoder *dec, float **pcm, int samples,
 		}
 
 		ret = mux_decoder_emit(dec, MUX_STREAM_AUDIO, tmp,
-				       (size_t)m * channels * sizeof(int16_t), 0);
+				       (size_t)m * channels * sizeof(int16_t));
 		if (ret)
 			return ret;
 
@@ -530,8 +530,7 @@ static int vorbis_decoder_decode(struct mux_decoder *dec, const void *input,
 			if (op.e_o_s && op.bytes == 0)
 				continue;
 			ret = mux_decoder_emit(dec, MUX_STREAM_SIDE_CHANNEL,
-					       op.packet, op.bytes,
-					       MUX_EMIT_FRAME_END);
+					       op.packet, op.bytes);
 			if (ret)
 				return ret;
 		}

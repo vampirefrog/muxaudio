@@ -108,7 +108,7 @@ struct mux_decoder {
  */
 int mux_encoder_emit(struct mux_encoder *enc, const void *data, size_t size);
 int mux_decoder_emit(struct mux_decoder *dec, int stream_type,
-		     const void *data, size_t size, int flags);
+		     const void *data, size_t size);
 
 /*
  * Codec registry
@@ -144,9 +144,10 @@ int mux_leb128_encode(uint64_t value, uint8_t *output, size_t output_size);
  *
  * Encode side: emit one frame straight to the sink (no buffering).
  * Decode side: a byte-driven state machine that holds only integer state -
- *   no payload buffer. Payloads are delivered to 'emit' in whatever chunks
- *   the input arrives in; MUX_EMIT_FRAME_END marks the chunk completing a
- *   frame, so the caller can reassemble discrete messages.
+ *   no payload buffer. It demultiplexes into two ordered byte streams and
+ *   delivers each stream's bytes to 'emit' in whatever chunks the input
+ *   arrives in; it does not preserve per-frame boundaries (neither stream
+ *   needs them - side-channel data frames itself).
  */
 int mux_leb128_emit_frame(const void *payload, size_t payload_size,
 			  int stream_type, int num_streams,

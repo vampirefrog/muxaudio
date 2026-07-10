@@ -48,12 +48,10 @@ static void usage(const char *prog)
 }
 
 /* Emit: audio -> stdout, side channel -> fd 3. Returns 0 on success. */
-static int emit_cb(void *user, int stream_type, const void *data, size_t size,
-		   int flags)
+static int emit_cb(void *user, int stream_type, const void *data, size_t size)
 {
 	struct demux_stats *stats = user;
 
-	(void)flags;
 	if (size == 0)
 		return 0;
 

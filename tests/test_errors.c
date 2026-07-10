@@ -22,9 +22,9 @@ static void print_error(const char *context, const struct mux_error_info *err)
 }
 
 /* Emit callback that always aborts, to exercise error propagation. */
-static int reject_emit(void *user, int st, const void *d, size_t n, int flags)
+static int reject_emit(void *user, int st, const void *d, size_t n)
 {
-	(void)user; (void)st; (void)d; (void)n; (void)flags;
+	(void)user; (void)st; (void)d; (void)n;
 	return 1;
 }
 

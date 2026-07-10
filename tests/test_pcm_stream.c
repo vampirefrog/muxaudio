@@ -48,39 +48,23 @@ static int sink_cb(void *user, const void *data, size_t size)
 }
 
 /* ---- decoder emit collector --------------------------------------------- */
-#define MAX_MSGS 64
 struct collector {
-	struct buf audio;          /* concatenated audio */
-	struct buf cur;            /* side msg under reassembly */
-	struct buf msgs[MAX_MSGS]; /* completed side messages */
-	int nmsgs;
-	int fail;
+	struct buf audio;   /* concatenated audio bytes */
+	struct buf side;    /* concatenated side-channel bytes (self-framing) */
 };
 
-static int emit_cb(void *user, int stream_type, const void *data,
-		   size_t size, int flags)
+static int emit_cb(void *user, int stream_type, const void *data, size_t size)
 {
 	struct collector *c = user;
-
-	if (stream_type == MUX_STREAM_AUDIO) {
-		buf_append(&c->audio, data, size);
-	} else {
-		buf_append(&c->cur, data, size);
-		if (flags & MUX_EMIT_FRAME_END) {
-			if (c->nmsgs >= MAX_MSGS) { c->fail = 1; return 1; }
-			buf_append(&c->msgs[c->nmsgs], c->cur.data, c->cur.len);
-			c->nmsgs++;
-			c->cur.len = 0;
-		}
-	}
+	buf_append(stream_type == MUX_STREAM_AUDIO ? &c->audio : &c->side,
+		   data, size);
 	return 0;
 }
 
 static void collector_free(struct collector *c)
 {
 	buf_free(&c->audio);
-	buf_free(&c->cur);
-	for (int i = 0; i < c->nmsgs; i++) buf_free(&c->msgs[i]);
+	buf_free(&c->side);
 }
 
 /* ---- test fixtures ------------------------------------------------------- */
@@ -135,18 +119,12 @@ static int decode_chunked(enum mux_codec_type codec, struct buf *enc,
 	return rc;
 }
 
-/* Compare two collectors for equality (audio bytes + side messages). */
+/* Compare two collectors for equality (audio bytes + side bytes). */
 static void compare(struct collector *ref, struct collector *got,
 		    const char *label)
 {
-	CHECK(!got->fail, "collector overflow");
 	CHECK(buf_eq(&ref->audio, &got->audio), "audio matches reference");
-	CHECK(ref->nmsgs == got->nmsgs, "side message count matches reference");
-	if (ref->nmsgs == got->nmsgs) {
-		for (int i = 0; i < ref->nmsgs; i++)
-			CHECK(buf_eq(&ref->msgs[i], &got->msgs[i]),
-			      "side message matches reference");
-	}
+	CHECK(buf_eq(&ref->side, &got->side), "side channel matches reference");
 	(void)label;
 }
 
@@ -175,14 +153,14 @@ static void run_codec(enum mux_codec_type codec, const char *name, int lossless,
 		CHECK(buf_eq(&src, &ref.audio), "lossless audio equals source");
 		buf_free(&src);
 	}
-	CHECK(ref.nmsgs == 2, "two side messages");
-	if (ref.nmsgs == 2) {
-		CHECK(ref.msgs[0].len == strlen(side1) &&
-		      memcmp(ref.msgs[0].data, side1, strlen(side1)) == 0,
-		      "side msg 1 content");
-		CHECK(ref.msgs[1].len == strlen(side2) &&
-		      memcmp(ref.msgs[1].data, side2, strlen(side2)) == 0,
-		      "side msg 2 content");
+	/* Side channel is a plain ordered byte stream: the two messages come
+	 * back concatenated in encode order. */
+	{
+		struct buf exp = {0};
+		buf_append(&exp, side1, strlen(side1));
+		buf_append(&exp, side2, strlen(side2));
+		CHECK(buf_eq(&exp, &ref.side), "side channel == concatenated messages");
+		buf_free(&exp);
 	}
 
 	/* Every chunking must reproduce the reference exactly. */

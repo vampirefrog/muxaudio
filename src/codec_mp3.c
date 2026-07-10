@@ -246,7 +246,7 @@ static int mp3_drain(struct mux_decoder *dec, mpg123_handle *mh)
 
 		if (pcm_bytes > 0) {
 			int r = mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm_buf,
-						 pcm_bytes, 0);
+						 pcm_bytes);
 			if (r)
 				return r;
 		}
@@ -270,13 +270,13 @@ static int mp3_drain(struct mux_decoder *dec, mpg123_handle *mh)
 
 /* Parser emit shim: audio -> mpg123 (or passthrough); side -> forward. */
 static int mp3_parser_emit(void *user, int stream_type, const void *chunk,
-			   size_t size, int flags)
+			   size_t size)
 {
 	struct mux_decoder *dec = user;
 	struct mp3_decoder_data *data = dec->codec_data;
 
 	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
-		return mux_decoder_emit(dec, stream_type, chunk, size, flags);
+		return mux_decoder_emit(dec, stream_type, chunk, size);
 
 #ifdef HAVE_MP3_USE_MPG123
 	if (size > 0) {
@@ -292,7 +292,7 @@ static int mp3_parser_emit(void *user, int stream_type, const void *chunk,
 #else
 	/* Passthrough: forward raw MP3 frame bytes on the audio stream. */
 	(void)data;
-	return mux_decoder_emit(dec, MUX_STREAM_AUDIO, chunk, size, flags);
+	return mux_decoder_emit(dec, MUX_STREAM_AUDIO, chunk, size);
 #endif
 }
 

@@ -26,10 +26,9 @@ struct collector {
 	struct th_buf side;
 };
 
-static int emit(void *user, int st, const void *d, size_t n, int flags)
+static int emit(void *user, int st, const void *d, size_t n)
 {
 	struct collector *c = user;
-	(void)flags;
 	return th_append(st == MUX_STREAM_AUDIO ? &c->audio : &c->side, d, n);
 }
 

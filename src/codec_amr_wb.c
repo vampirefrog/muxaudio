@@ -313,14 +313,14 @@ static int amr_wb_decode_one(struct mux_decoder *dec,
 {
 	int16_t pcm_out[AMR_WB_FRAME_SAMPLES];
 	D_IF_decode(data->decoder, amr_frame, pcm_out, 0);
-	return mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm_out,
-				sizeof(pcm_out), 0);
+	return mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm_out, sizeof(pcm_out));
 }
 
-/* Parser emit shim. Mux mode: reassemble one AMR-WB frame per LEB128 audio
- * frame. Passthrough: split the raw bitstream by mode-byte length. */
+/* Parser emit shim: AMR-WB frames are self-delimiting (mode byte -> length),
+ * so split the raw audio byte stream by mode byte for both mux and passthrough.
+ * Side channel passes through. */
 static int amr_wb_parser_emit(void *user, int stream_type, const void *chunk,
-			      size_t size, int flags)
+			      size_t size)
 {
 	struct mux_decoder *dec = user;
 	struct amr_wb_decoder_data *data = dec->codec_data;
@@ -328,28 +328,8 @@ static int amr_wb_parser_emit(void *user, int stream_type, const void *chunk,
 	int ret;
 
 	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
-		return mux_decoder_emit(dec, stream_type, chunk, size, flags);
+		return mux_decoder_emit(dec, stream_type, chunk, size);
 
-	if (dec->num_streams == 2) {
-		if (data->frame_len + (int)size > (int)sizeof(data->frame)) {
-			mux_decoder_set_error(dec, MUX_ERROR_FORMAT,
-					      "AMR-WB frame exceeds buffer", NULL, 0, NULL);
-			return MUX_ERROR_FORMAT;
-		}
-		if (size) {
-			memcpy(data->frame + data->frame_len, in, size);
-			data->frame_len += size;
-		}
-		if (flags & MUX_EMIT_FRAME_END) {
-			ret = data->frame_len > 0
-			      ? amr_wb_decode_one(dec, data, data->frame) : MUX_OK;
-			data->frame_len = 0;
-			return ret;
-		}
-		return MUX_OK;
-	}
-
-	/* Passthrough: self-delimiting frames via mode byte. */
 	for (size_t i = 0; i < size; i++) {
 		data->frame[data->frame_len++] = in[i];
 		if (data->frame_len == 1) {

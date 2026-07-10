@@ -215,7 +215,7 @@ static void mulaw_decoder_deinit(struct mux_decoder *dec)
  * through a fixed stack buffer; side channel passes through unchanged.
  */
 static int mulaw_parser_emit(void *user, int stream_type, const void *data,
-			     size_t size, int flags)
+			     size_t size)
 {
 	struct mux_decoder *dec = user;
 	const uint8_t *in = data;
@@ -223,16 +223,12 @@ static int mulaw_parser_emit(void *user, int stream_type, const void *data,
 	int ret;
 
 	if (stream_type != MUX_STREAM_AUDIO)
-		return mux_decoder_emit(dec, stream_type, data, size, flags);
-
-	if (size == 0)
-		return mux_decoder_emit(dec, MUX_STREAM_AUDIO, data, 0, flags);
+		return mux_decoder_emit(dec, stream_type, data, size);
 
 	for (off = 0; off < size; ) {
 		int16_t pcm[2048];
 		size_t take = size - off;
 		size_t i;
-		int last;
 
 		if (take > 2048)
 			take = 2048;
@@ -240,10 +236,8 @@ static int mulaw_parser_emit(void *user, int stream_type, const void *data,
 		for (i = 0; i < take; i++)
 			pcm[i] = mulaw_decode_sample(in[off + i]);
 
-		last = (off + take == size);
 		ret = mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm,
-				       take * sizeof(int16_t),
-				       last ? flags : 0);
+				       take * sizeof(int16_t));
 		if (ret)
 			return ret;
 

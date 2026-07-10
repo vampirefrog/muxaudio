@@ -70,13 +70,13 @@ mux_encoder_finalize(enc);                                      // flushes tail
 mux_encoder_destroy(enc);
 
 // --- Decode ---
-// Emit receives demuxed audio and side-channel data, in arbitrary chunks.
-int on_output(void *user, int stream_type, const void *data, size_t size,
-              int flags) {
+// Emit receives demuxed data in arbitrary chunks. Both audio and side channel
+// are plain ordered byte streams.
+int on_output(void *user, int stream_type, const void *data, size_t size) {
     if (stream_type == MUX_STREAM_AUDIO)
         fwrite(data, 1, size, pcm_out);         // decoded PCM (int16)
-    else if (flags & MUX_EMIT_FRAME_END)
-        handle_event(data, size);               // a complete side-channel msg
+    else
+        feed_event_parser(data, size);          // side-channel bytes (self-framing)
     return 0;
 }
 
@@ -88,8 +88,9 @@ mux_decoder_destroy(dec);
 ```
 
 Input can be fed in any chunking — down to one byte per `decode()` call — and
-produces identical output. `MUX_EMIT_FRAME_END` marks the chunk that completes a
-logical side-channel message, so discrete events can be reassembled.
+produces identical output. The side channel is a plain ordered byte stream: the
+bytes come back exactly as encoded, so a self-delimiting event format frames
+itself (muxaudio does not impose message boundaries).
 
 ---
 
@@ -143,7 +144,6 @@ struct mux_error_info {
 ```c
 #define MUX_STREAM_AUDIO        0  // Audio stream type
 #define MUX_STREAM_SIDE_CHANNEL 1  // Side channel (metadata) stream type
-#define MUX_EMIT_FRAME_END      1  // emit flag: this chunk completes a frame
 ```
 
 ### Callback Types
@@ -154,9 +154,9 @@ struct mux_error_info {
 typedef int (*mux_sink_fn)(void *user, const void *data, size_t size);
 
 // Decoder output: receives demuxed audio / side-channel data in arbitrary
-// chunks. flags carries MUX_EMIT_FRAME_END on the chunk completing a frame.
+// chunks. Both streams are plain ordered byte streams.
 typedef int (*mux_emit_fn)(void *user, int stream_type,
-                           const void *data, size_t size, int flags);
+                           const void *data, size_t size);
 ```
 
 ### Error Codes
@@ -497,8 +497,8 @@ mux_decoder_decode(dec, encoded, sizeof(encoded));  // output goes to the emit c
 ```
 
 The emit callback receives `stream_type` (`MUX_STREAM_AUDIO` or
-`MUX_STREAM_SIDE_CHANNEL`) per chunk; check `flags & MUX_EMIT_FRAME_END` to know
-when a discrete side-channel message is complete.
+`MUX_STREAM_SIDE_CHANNEL`) per chunk. Both are plain ordered byte streams; the
+side channel's bytes come back exactly as encoded (it self-frames if needed).
 
 #### `mux_decoder_finalize`
 Flush any codec-internal carry.
@@ -655,17 +655,19 @@ static int sink(void *u, const void *d, size_t n) {
     memcpy(b->data + b->len, d, n); b->len += n; return 0;
 }
 
-// On decode, audio and metadata are delivered interleaved. Reassemble each
-// side-channel message using MUX_EMIT_FRAME_END.
+// On decode, audio and metadata are delivered interleaved. The side channel is
+// a plain byte stream, so the app self-delimits - here, newline-terminated
+// messages.
 static char msg[256]; static size_t msg_len;
-static int on_out(void *u, int st, const void *d, size_t n, int flags) {
+static int on_out(void *u, int st, const void *d, size_t n) {
     (void)u;
     if (st == MUX_STREAM_AUDIO) {
         printf("Audio: %zu bytes\n", n);
     } else {
-        memcpy(msg + msg_len, d, n); msg_len += n;
-        if (flags & MUX_EMIT_FRAME_END) {
-            msg[msg_len] = 0; printf("Metadata: %s\n", msg); msg_len = 0;
+        const char *p = d;
+        for (size_t i = 0; i < n; i++) {          // split side bytes on '\n'
+            if (p[i] == '\n') { msg[msg_len] = 0; printf("Metadata: %s\n", msg); msg_len = 0; }
+            else if (msg_len < sizeof(msg) - 1) msg[msg_len++] = p[i];
         }
     }
     return 0;
@@ -683,7 +685,7 @@ int main(void) {
         mux_encoder_encode(enc, audio, sizeof(audio), MUX_STREAM_AUDIO);
 
         char meta[64];
-        int len = snprintf(meta, sizeof(meta), "timestamp=%d", chunk * 20);
+        int len = snprintf(meta, sizeof(meta), "timestamp=%d\n", chunk * 20);
         mux_encoder_encode(enc, meta, len, MUX_STREAM_SIDE_CHANNEL);
     }
     mux_encoder_finalize(enc);

@@ -81,10 +81,9 @@ struct th_out {
 };
 
 static inline int th_emit(void *user, int stream_type, const void *data,
-			  size_t size, int flags)
+			  size_t size)
 {
 	struct th_out *o = user;
-	(void)flags;
 	return th_append(stream_type == MUX_STREAM_AUDIO ? &o->audio : &o->side,
 			 data, size);
 }

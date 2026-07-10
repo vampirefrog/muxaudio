@@ -595,7 +595,7 @@ static int mux_opus_decoder_decode(struct mux_decoder *dec, const void *input,
 						    data->num_channels *
 						    sizeof(int16_t);
 					ret = mux_decoder_emit(dec, MUX_STREAM_AUDIO,
-							       pcm_buf, sz, 0);
+							       pcm_buf, sz);
 					if (ret)
 						return ret;
 				}
@@ -610,8 +610,7 @@ static int mux_opus_decoder_decode(struct mux_decoder *dec, const void *input,
 			if (op.e_o_s && op.bytes == 0)
 				continue;
 			ret = mux_decoder_emit(dec, MUX_STREAM_SIDE_CHANNEL,
-					       op.packet, op.bytes,
-					       MUX_EMIT_FRAME_END);
+					       op.packet, op.bytes);
 			if (ret)
 				return ret;
 		}

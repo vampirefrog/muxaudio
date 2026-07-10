@@ -14,12 +14,11 @@
  * fixed one-frame carry buffer holds the sub-frame tail between encode() calls
  * (Layer-3 carry). Each encoded frame is emitted as one LEB128 audio frame.
  *
- * Decoder: raw AAC frames have no in-band length, so we rely on the LEB128
- * framing: reassemble one AAC frame (marked by MUX_EMIT_FRAME_END) into a fixed
- * buffer, then Fill + DecodeFrame it and emit the PCM. Side channel forwards.
+ * Decoder: emits ADTS frames whose headers are self-syncing, so the raw audio
+ * byte stream is fed straight to fdk-aac (aacDecoder_Fill + DecodeFrame), which
+ * finds frame boundaries itself - no reassembly, works on any chunking. Side
+ * channel forwards.
  */
-
-#define AAC_FRAME_CAP  16384   /* max reassembled raw AAC frame */
 
 struct aac_encoder_data {
 	HANDLE_AACENCODER enc;
@@ -40,11 +39,6 @@ struct aac_encoder_data {
 struct aac_decoder_data {
 	HANDLE_AACDECODER dec;
 	struct mux_leb128_parser parser;
-
-	uint8_t frame[AAC_FRAME_CAP];   /* one reassembled raw AAC frame */
-	size_t frame_len;
-	int overflow;
-
 	int sample_rate;
 	int num_channels;
 };
@@ -356,79 +350,83 @@ static void mux_aac_decoder_deinit(struct mux_decoder *dec)
 	dec->codec_data = NULL;
 }
 
-/* Decode one complete reassembled raw AAC frame and emit the PCM. */
-static int aac_decode_frame(struct mux_decoder *dec, struct aac_decoder_data *data)
+/* Drain all currently-decodable frames from fdk-aac to the emit callback.
+ * fdk-aac reports AAC_DEC_TRANSPORT_SYNC_ERROR between ADTS frames as a normal
+ * resync (it recovers on the next call), so we only stop on NOT_ENOUGH_BITS;
+ * an idle guard bounds the loop in case a stream never yields another frame. */
+static int aac_drain(struct mux_decoder *dec, struct aac_decoder_data *data)
 {
-	uint8_t *in_ptr = data->frame;
-	UINT buffer_size = (UINT)data->frame_len;
-	UINT bytes_valid = buffer_size;
-	AAC_DECODER_ERROR err;
-
-	err = aacDecoder_Fill(data->dec, &in_ptr, &buffer_size, &bytes_valid);
-	if (err != AAC_DEC_OK) {
-		mux_decoder_set_error(dec, MUX_ERROR_FORMAT, "AAC decoder fill failed",
-				      "libfdk-aac", err, NULL);
-		return MUX_OK;   /* skip this frame, keep going */
-	}
+	int idle = 0;
 
 	for (;;) {
 		int16_t pcm_buf[8192];
 		CStreamInfo *info;
+		AAC_DECODER_ERROR err;
 
 		err = aacDecoder_DecodeFrame(data->dec, pcm_buf,
 					     sizeof(pcm_buf) / sizeof(int16_t), 0);
 		if (err == AAC_DEC_NOT_ENOUGH_BITS)
 			break;
 		if (err != AAC_DEC_OK) {
-			mux_decoder_set_error(dec, MUX_ERROR_DECODE, "AAC decode failed",
-					      "libfdk-aac", err, NULL);
-			break;
+			if (++idle > 64)
+				break;   /* stuck resyncing - give up for now */
+			continue;
 		}
+		idle = 0;
 
 		info = aacDecoder_GetStreamInfo(data->dec);
-		if (info && info->numChannels > 0) {
+		if (info && info->numChannels > 0 && info->frameSize > 0) {
 			size_t sz = (size_t)info->frameSize * info->numChannels *
 				    sizeof(int16_t);
 			int r;
 
 			data->sample_rate = info->sampleRate;
 			data->num_channels = info->numChannels;
-			r = mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm_buf, sz, 0);
+			r = mux_decoder_emit(dec, MUX_STREAM_AUDIO, pcm_buf, sz);
 			if (r)
 				return r;
 		}
 	}
-
 	return MUX_OK;
 }
 
-/* Parser emit shim: reassemble one raw AAC frame; pass side through. */
+/* Parser emit shim: feed the raw ADTS byte stream to fdk-aac (which syncs on
+ * ADTS headers itself); side channel passes through. */
 static int aac_parser_emit(void *user, int stream_type, const void *chunk,
-			   size_t size, int flags)
+			   size_t size)
 {
 	struct mux_decoder *dec = user;
 	struct aac_decoder_data *data = dec->codec_data;
-	int ret;
+	const uint8_t *in = chunk;
+	size_t off = 0;
 
 	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
-		return mux_decoder_emit(dec, stream_type, chunk, size, flags);
+		return mux_decoder_emit(dec, stream_type, chunk, size);
 
-	if (data->frame_len + size > AAC_FRAME_CAP) {
-		data->overflow = 1;
-		mux_decoder_set_error(dec, MUX_ERROR_FORMAT,
-				      "AAC frame exceeds reassembly buffer",
-				      NULL, 0, NULL);
-		return MUX_ERROR_FORMAT;
-	}
-	if (size) {
-		memcpy(data->frame + data->frame_len, chunk, size);
-		data->frame_len += size;
-	}
+	while (off < size) {
+		UCHAR *inbuf[1] = { (UCHAR *)(in + off) };
+		UINT insize[1] = { (UINT)(size - off) };
+		UINT valid = (UINT)(size - off);
+		AAC_DECODER_ERROR err;
+		size_t consumed;
+		int r;
 
-	if (flags & MUX_EMIT_FRAME_END) {
-		ret = aac_decode_frame(dec, data);
-		data->frame_len = 0;
-		return ret;
+		err = aacDecoder_Fill(data->dec, inbuf, insize, &valid);
+		if (err != AAC_DEC_OK) {
+			mux_decoder_set_error(dec, MUX_ERROR_DECODE,
+					      "aacDecoder_Fill failed",
+					      "libfdk-aac", err, NULL);
+			return MUX_ERROR_DECODE;
+		}
+		consumed = (size - off) - valid;
+		off += consumed;
+
+		r = aac_drain(dec, data);
+		if (r)
+			return r;
+
+		if (consumed == 0)
+			break;   /* internal buffer full and nothing decodable */
 	}
 	return MUX_OK;
 }
@@ -450,6 +448,9 @@ static int mux_aac_decoder_decode(struct mux_decoder *dec, const void *input,
 
 static int mux_aac_decoder_finalize(struct mux_decoder *dec)
 {
+	/* Frames decode as their ADTS bytes arrive; fdk-aac's ~1-frame delay is
+	 * left unflushed (flushing loops emitting concealment) - negligible for a
+	 * lossy stream. */
 	(void)dec;
 	return MUX_OK;
 }

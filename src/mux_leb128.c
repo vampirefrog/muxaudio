@@ -84,10 +84,11 @@ void mux_leb128_parser_init(struct mux_leb128_parser *p)
 }
 
 /*
- * Feed bytes into the streaming demux parser. Delivers demuxed data to 'emit'
- * as it is recognised, holding only integer state between calls. A payload may
- * span any number of feed() calls and be delivered in any number of emit()
- * chunks; MUX_EMIT_FRAME_END flags the chunk that completes a frame.
+ * Feed bytes into the streaming demux parser. Demultiplexes into two ordered
+ * byte streams and delivers each stream's bytes to 'emit' as they are
+ * recognised, holding only integer state between calls. It does not preserve
+ * per-frame boundaries - a payload may be delivered in any number of chunks and
+ * consecutive frames of the same stream simply concatenate.
  */
 int mux_leb128_parser_feed(struct mux_leb128_parser *p,
 			   const void *input, size_t size,
@@ -104,7 +105,7 @@ int mux_leb128_parser_feed(struct mux_leb128_parser *p,
 	/* Passthrough mode - every byte is audio, no framing. */
 	if (num_streams == 1) {
 		if (n > 0)
-			return emit(user, MUX_STREAM_AUDIO, in, n, 0);
+			return emit(user, MUX_STREAM_AUDIO, in, n);
 		return MUX_OK;
 	}
 
@@ -128,23 +129,12 @@ int mux_leb128_parser_feed(struct mux_leb128_parser *p,
 			p->payload_remaining = p->acc >> 1;
 			p->acc = 0;
 			p->shift = 0;
-			p->in_payload = 1;
-
-			if (p->payload_remaining == 0) {
-				/* Zero-length frame: one empty, terminal chunk. */
-				ret = emit(user, p->stream_type, in, 0,
-					   MUX_EMIT_FRAME_END);
-				if (ret)
-					return ret;
-				p->in_payload = 0;
-			}
+			p->in_payload = (p->payload_remaining != 0);
 		} else {
 			size_t take = (p->payload_remaining < n)
 				      ? (size_t)p->payload_remaining : n;
-			int last = (take == p->payload_remaining);
 
-			ret = emit(user, p->stream_type, in, take,
-				   last ? MUX_EMIT_FRAME_END : 0);
+			ret = emit(user, p->stream_type, in, take);
 			if (ret)
 				return ret;
 

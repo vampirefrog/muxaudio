@@ -324,7 +324,7 @@ static FLAC__StreamDecoderWriteStatus flac_dec_write_callback(
 				tmp[j * nch + ch] = (int16_t)buffer[ch][i + j];
 
 		r = mux_decoder_emit(dec, MUX_STREAM_AUDIO, tmp,
-				     (size_t)m * nch * sizeof(int16_t), 0);
+				     (size_t)m * nch * sizeof(int16_t));
 		if (r) {
 			data->emit_ret = r;
 			return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
@@ -532,13 +532,13 @@ static int flac_feed_audio(struct flac_decoder_data *d, const uint8_t *in,
 
 /* Parser emit shim: route audio bytes into the FLAC feed buffer; side through. */
 static int flac_parser_emit(void *user, int stream_type, const void *chunk,
-			    size_t size, int flags)
+			    size_t size)
 {
 	struct mux_decoder *dec = user;
 	struct flac_decoder_data *data = dec->codec_data;
 
 	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
-		return mux_decoder_emit(dec, stream_type, chunk, size, flags);
+		return mux_decoder_emit(dec, stream_type, chunk, size);
 
 	return flac_feed_audio(data, chunk, size);
 }

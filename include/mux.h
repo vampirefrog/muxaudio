@@ -16,13 +16,6 @@ extern "C" {
 #define MUX_STREAM_SIDE_CHANNEL 1
 
 /*
- * Emit flags (see mux_emit_fn). Set on the chunk that completes a logical
- * frame, so the caller can reassemble discrete side-channel messages that the
- * decoder may deliver in several pieces.
- */
-#define MUX_EMIT_FRAME_END      1
-
-/*
  * Codec types
  */
 enum mux_codec_type {
@@ -143,11 +136,13 @@ typedef int (*mux_sink_fn)(void *user, const void *data, size_t size);
  * Emit callback: receives demultiplexed audio / side-channel data produced by
  * the decoder. Invoked synchronously from within mux_decoder_decode()/
  * mux_decoder_finalize(), possibly several times per call, with data delivered
- * in arbitrarily sized chunks. 'flags' carries MUX_EMIT_FRAME_END on the chunk
- * that completes a logical frame. Return 0 to continue; non-zero aborts.
+ * in arbitrarily sized chunks. Both streams are plain ordered byte streams -
+ * audio is interleaved int16 PCM, side channel is opaque bytes in the order
+ * they were encoded (it frames itself, if it needs to). Return 0 to continue;
+ * a non-zero return aborts and is propagated out of the decode call.
  */
 typedef int (*mux_emit_fn)(void *user, int stream_type,
-			   const void *data, size_t size, int flags);
+			   const void *data, size_t size);
 
 /*
  * Codec discovery
