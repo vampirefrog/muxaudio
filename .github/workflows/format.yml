@@ -1,0 +1,32 @@
+name: Format Check
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install clang-format
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-format
+        clang-format --version
+
+    - name: Check formatting
+      run: |
+        files=$(git ls-files '*.c' '*.h' '*.cpp' '*.hpp' '*.cc')
+        if [ -z "$files" ]; then
+          echo "No C/C++ files to check."
+          exit 0
+        fi
+        # Fails (exit 1) and prints a diff for any file that isn't formatted.
+        clang-format --dry-run --Werror $files

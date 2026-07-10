@@ -1,0 +1,31 @@
+#!/bin/sh
+# Pre-commit hook: rejects commits whose staged C/C++ changes aren't clang-formatted.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+#
+# It checks only the lines you actually touched (via git clang-format). To
+# auto-apply the fixes instead of failing, run:  git clang-format  then re-stage.
+
+command -v clang-format >/dev/null 2>&1 || {
+	echo "pre-commit: clang-format not found, skipping format check." >&2
+	exit 0
+}
+
+# git clang-format ships alongside clang-format in most distros.
+if ! command -v git-clang-format >/dev/null 2>&1; then
+	echo "pre-commit: git-clang-format not found, skipping format check." >&2
+	exit 0
+fi
+
+# Diff the staged changes against what clang-format would produce.
+output=$(git clang-format --staged --diff --extensions c,h,cpp,hpp,cc 2>/dev/null)
+
+case "$output" in
+	*"no modified files to format"*|*"clang-format did not modify any files"*|"")
+		exit 0
+		;;
+esac
+
+echo "pre-commit: staged changes are not formatted. Run 'git clang-format' then re-stage." >&2
+echo "$output" >&2
+exit 1

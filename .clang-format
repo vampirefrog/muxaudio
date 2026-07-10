@@ -1,0 +1,33 @@
+# Formatting rules for muxaudio. See: clang-format --help / ClangFormatStyleOptions
+# Apply:   git ls-files '*.c' '*.h' | xargs clang-format -i
+# Check:   clang-format --dry-run --Werror <files>
+Language: Cpp
+BasedOnStyle: LLVM
+
+# --- Indentation: tabs, width 4 ---
+UseTab: Always
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+
+# --- Braces attach to the same line (functions, control statements, structs) ---
+BreakBeforeBraces: Attach
+
+# --- Long parameter/argument lists ---
+# Break after '(', put each param on its own line indented one level,
+# and place the closing ')' on its own line so "') {'" follows.
+AlignAfterOpenBracket: BlockIndent
+BinPackParameters: false
+BinPackArguments: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false
+
+# --- No space after if / for / while / switch (but keep function style tight too) ---
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: false
+  AfterFunctionDefinitionName: false
+  AfterFunctionDeclarationName: false
+
+# --- Wrapping threshold: signatures longer than this wrap as above ---
+ColumnLimit: 100
