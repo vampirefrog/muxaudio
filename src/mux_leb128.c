@@ -110,39 +110,40 @@ int mux_leb128_parser_feed(struct mux_leb128_parser *p,
 	}
 
 	while (n > 0) {
-		if (!p->in_payload) {
-			/* Accumulate one LEB128 header byte. */
+		if (p->state < 64) {
+			/* Accumulate one LEB128 header byte; state is its index. */
 			uint8_t b = *in++;
 			n--;
 
-			p->acc |= (uint64_t)(b & 0x7f) << p->shift;
-			p->shift += 7;
+			if (p->state == 0)
+				p->remaining = b & 0x7f;
+			else
+				p->remaining |= (uint64_t)(b & 0x7f) << (7 * p->state);
 
 			if (b & 0x80) {
-				if (p->shift >= 64)
+				if (p->state >= 9)
 					return MUX_ERROR_FORMAT;  /* varint too long */
-				continue;
+				p->state++;
+			} else {
+				/* Header complete: low bit is the stream, the rest is
+				 * the payload length. Fold the stream into the state. */
+				int stream = (int)(p->remaining & 1);
+				p->remaining >>= 1;
+				p->state = p->remaining ? (64 + stream) : 0;
 			}
-
-			/* Header complete. */
-			p->stream_type = (int)(p->acc & 1);
-			p->payload_remaining = p->acc >> 1;
-			p->acc = 0;
-			p->shift = 0;
-			p->in_payload = (p->payload_remaining != 0);
 		} else {
-			size_t take = (p->payload_remaining < n)
-				      ? (size_t)p->payload_remaining : n;
+			/* Deliver payload of the current frame (stream = state-64). */
+			size_t take = (p->remaining < n) ? (size_t)p->remaining : n;
 
-			ret = emit(user, p->stream_type, in, take);
+			ret = emit(user, p->state - 64, in, take);
 			if (ret)
 				return ret;
 
 			in += take;
 			n -= take;
-			p->payload_remaining -= take;
-			if (p->payload_remaining == 0)
-				p->in_payload = 0;
+			p->remaining -= take;
+			if (p->remaining == 0)
+				p->state = 0;
 		}
 	}
 

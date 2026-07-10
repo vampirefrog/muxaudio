@@ -163,11 +163,15 @@ int mux_leb128_emit_header(size_t payload_size, int stream_type,
 			   int num_streams, mux_sink_fn sink, void *user);
 
 struct mux_leb128_parser {
-	uint64_t acc;              /* varint accumulator (header)      */
-	int shift;                 /* current varint bit shift         */
-	int in_payload;            /* 0 = reading header, 1 = payload   */
-	int stream_type;           /* stream type of current frame     */
-	uint64_t payload_remaining;/* payload bytes left in this frame */
+	/*
+	 * Two fields hold the whole state. 'state' is either the index (0..9) of
+	 * the LEB128 header byte being accumulated, or 64|stream_type once the
+	 * header is parsed and we're delivering payload. 'remaining' doubles as
+	 * the varint accumulator while reading the header and the count of
+	 * payload bytes still to deliver afterwards.
+	 */
+	int state;
+	uint64_t remaining;
 };
 
 void mux_leb128_parser_init(struct mux_leb128_parser *p);
