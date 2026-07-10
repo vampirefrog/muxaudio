@@ -8,21 +8,23 @@
 #include <FLAC/stream_decoder.h>
 
 /*
- * FLAC codec (push / streaming, LEB128-framed)
+ * FLAC codec (push / streaming)
  *
  * Encoder: libFLAC's write callback fires once per FLAC frame (and once for the
- * stream header). Each such write becomes exactly one LEB128 audio frame emitted
- * straight to the sink - no output buffer.
+ * stream header). Each write becomes one LEB128 audio frame emitted straight to
+ * the sink - no output buffer.
  *
- * Decoder: libFLAC is pull-based (read callback), which we bridge to the push
- * API by exploiting the framing above. The LEB128 parser tells us, via
- * MUX_EMIT_FRAME_END, where each FLAC frame ends; we reassemble one frame into a
- * fixed buffer and let libFLAC pull that single complete frame, then flush to
- * clear its end-of-stream flag before the next frame. No growable buffering.
+ * Decoder: libFLAC has no push/feed API - it only pulls via a read callback and
+ * can't suspend mid-frame. So we demux the audio byte stream into a dynamically
+ * allocated buffer sized to hold a whole FLAC frame (derived from STREAMINFO's
+ * max blocksize / channels / bit depth), keep libFLAC roughly one frame behind
+ * the write head, and let its read callback drain that buffer. The buffer never
+ * starves mid-frame, so no per-frame reassembly and no dependence on the mux
+ * framing - the same path works on raw (un-muxed) FLAC from the network. At
+ * end-of-stream the read callback returns EOF to flush the tail.
  */
 
-#define FLAC_ENC_BLOCK   4096            /* samples/channel per process() call */
-#define FLAC_FRAME_CAP   (1u << 18)      /* max reassembled FLAC frame (256 KiB) */
+#define FLAC_ENC_BLOCK   4096   /* samples/channel per process() call */
 
 struct flac_encoder_data {
 	FLAC__StreamEncoder *enc;
@@ -38,14 +40,19 @@ struct flac_decoder_data {
 	struct mux_decoder *owner;       /* for emit access inside callbacks */
 	struct mux_leb128_parser parser;
 
-	uint8_t frame[FLAC_FRAME_CAP];   /* one reassembled FLAC frame/header */
-	size_t frame_len;                /* bytes accumulated                 */
-	size_t frame_read;               /* bytes handed to libFLAC read cb   */
+	/* Bootstrap: first 42 bytes carry "fLaC" + STREAMINFO, which sizes buf. */
+	uint8_t boot[42];
+	int boot_len;
 
+	/* Dynamic feed buffer (audio bytes libFLAC hasn't consumed yet). */
+	uint8_t *buf;
+	size_t cap, rpos, wpos;
+	size_t max_frame;                /* worst-case frame size from STREAMINFO */
+
+	int finalizing;                  /* read callback may return EOF */
 	int emit_ret;                    /* sticky non-zero emit return */
-	int overflow;                    /* frame exceeded FLAC_FRAME_CAP */
-	int sample_rate;
-	int num_channels;
+	int failed;
+	int channels;
 };
 
 static const struct mux_param_desc flac_encoder_params[] = {
@@ -272,19 +279,21 @@ static FLAC__StreamDecoderReadStatus flac_read_callback(
 	const FLAC__StreamDecoder *decoder, FLAC__byte buffer[],
 	size_t *bytes, void *client_data)
 {
-	struct flac_decoder_data *data = client_data;
-	size_t avail = data->frame_len - data->frame_read;
+	struct flac_decoder_data *d = client_data;
+	size_t avail = d->wpos - d->rpos;
 
 	(void)decoder;
 
 	if (avail == 0) {
+		/* Empty: only legitimate at end-of-stream. Mid-stream we gate so
+		 * this isn't reached; if it is, EOF is the only honest answer. */
 		*bytes = 0;
 		return FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM;
 	}
 	if (*bytes > avail)
 		*bytes = avail;
-	memcpy(buffer, data->frame + data->frame_read, *bytes);
-	data->frame_read += *bytes;
+	memcpy(buffer, d->buf + d->rpos, *bytes);
+	d->rpos += *bytes;
 	return FLAC__STREAM_DECODER_READ_STATUS_CONTINUE;
 }
 
@@ -331,10 +340,8 @@ static void flac_dec_metadata_callback(const FLAC__StreamDecoder *decoder,
 {
 	struct flac_decoder_data *data = client_data;
 	(void)decoder;
-	if (metadata->type == FLAC__METADATA_TYPE_STREAMINFO) {
-		data->sample_rate = metadata->data.stream_info.sample_rate;
-		data->num_channels = metadata->data.stream_info.channels;
-	}
+	if (metadata->type == FLAC__METADATA_TYPE_STREAMINFO)
+		data->channels = metadata->data.stream_info.channels;
 }
 
 static void flac_dec_error_callback(const FLAC__StreamDecoder *decoder,
@@ -405,36 +412,125 @@ static void mux_flac_decoder_deinit(struct mux_decoder *dec)
 		FLAC__stream_decoder_finish(data->dec);
 		FLAC__stream_decoder_delete(data->dec);
 	}
+	free(data->buf);
 	free(data);
 	dec->codec_data = NULL;
 }
 
-/* Drive libFLAC over one reassembled, complete FLAC frame (or header block). */
-static int flac_decode_unit(struct flac_decoder_data *data)
+/* Size the feed buffer from the STREAMINFO captured in boot[] (42 bytes:
+ * "fLaC" + 4-byte block header + 34-byte STREAMINFO). */
+static int flac_init_buffer(struct flac_decoder_data *d)
 {
-	data->frame_read = 0;
-	data->emit_ret = 0;
+	int max_bs, ch, bps;
+	size_t max_frame;
 
-	/* One process_single consumes the whole unit; the read callback returns
-	 * END_OF_STREAM at the unit boundary, which is how libFLAC knows the
-	 * frame ended. Loop in case a header unit yields a metadata block first. */
-	while (data->frame_read < data->frame_len) {
-		if (!FLAC__stream_decoder_process_single(data->dec))
-			break;
-		if (data->emit_ret)
-			break;
-	}
+	if (memcmp(d->boot, "fLaC", 4) != 0)
+		return -1;
+	if ((d->boot[4] & 0x7f) != 0)   /* first metadata block must be STREAMINFO */
+		return -1;
 
-	/* Clear the end-of-stream flag so the next unit can be read. Safe here
-	 * because a complete frame has already been emitted. */
-	FLAC__stream_decoder_flush(data->dec);
+	/* STREAMINFO starts at boot[8]; max blocksize at its bytes [2..3]. */
+	max_bs = (d->boot[10] << 8) | d->boot[11];
+	ch     = ((d->boot[20] >> 1) & 0x07) + 1;
+	bps    = (((d->boot[20] & 0x01) << 4) | (d->boot[21] >> 4)) + 1;
+	if (max_bs <= 0 || ch <= 0 || bps <= 0)
+		return -1;
 
-	data->frame_len = 0;
-	data->frame_read = 0;
-	return data->emit_ret;
+	max_frame = (size_t)max_bs * ch * ((bps + 7) / 8 + 1) + 64;
+	d->max_frame = max_frame;
+	d->cap = 4 * max_frame;       /* room for ~1 frame + generous read-ahead */
+	d->buf = malloc(d->cap);
+	if (!d->buf)
+		return -1;
+	d->rpos = d->wpos = 0;
+	return 0;
 }
 
-/* Parser emit shim: reassemble audio into whole FLAC frames; pass side through. */
+/* Ensure room for 'need' more bytes at wpos, compacting then growing. */
+static int flac_reserve(struct flac_decoder_data *d, size_t need)
+{
+	if (d->rpos > 0) {
+		memmove(d->buf, d->buf + d->rpos, d->wpos - d->rpos);
+		d->wpos -= d->rpos;
+		d->rpos = 0;
+	}
+	if (d->wpos + need > d->cap) {
+		size_t ncap = d->cap ? d->cap : 4096;
+		uint8_t *p;
+		while (ncap < d->wpos + need) ncap *= 2;
+		p = realloc(d->buf, ncap);
+		if (!p)
+			return -1;
+		d->buf = p;
+		d->cap = ncap;
+	}
+	return 0;
+}
+
+/* Drive libFLAC. While streaming, only decode when a frame's worth is
+ * comfortably buffered (2x max frame so read-ahead can't empty us mid-frame).
+ * When flushing, decode until the *decoder* reaches end-of-stream - libFLAC may
+ * hold read-ahead bytes internally after our own buffer has drained, so we must
+ * not gate the tail on our buffer level. */
+static int flac_pump(struct flac_decoder_data *d, int flush)
+{
+	for (;;) {
+		FLAC__StreamDecoderState st;
+
+		if (d->emit_ret)
+			break;
+		if (!flush && (d->wpos - d->rpos) < 2 * d->max_frame)
+			break;
+
+		st = FLAC__stream_decoder_get_state(d->dec);
+		if (st == FLAC__STREAM_DECODER_END_OF_STREAM ||
+		    st == FLAC__STREAM_DECODER_ABORTED)
+			break;
+
+		if (!FLAC__stream_decoder_process_single(d->dec)) {
+			d->failed = 1;
+			break;
+		}
+		if (d->rpos > 0) {
+			memmove(d->buf, d->buf + d->rpos, d->wpos - d->rpos);
+			d->wpos -= d->rpos;
+			d->rpos = 0;
+		}
+	}
+	return d->emit_ret;
+}
+
+/* Feed demuxed audio bytes: bootstrap the buffer size, append, then pump. */
+static int flac_feed_audio(struct flac_decoder_data *d, const uint8_t *in,
+			   size_t n)
+{
+	if (!d->buf) {
+		while (n > 0 && d->boot_len < 42) {
+			d->boot[d->boot_len++] = *in++;
+			n--;
+		}
+		if (d->boot_len < 42)
+			return MUX_OK;   /* need more to size the buffer */
+
+		if (flac_init_buffer(d) != 0)
+			return MUX_ERROR_FORMAT;
+		if (flac_reserve(d, 42) < 0)
+			return MUX_ERROR_NOMEM;
+		memcpy(d->buf + d->wpos, d->boot, 42);
+		d->wpos += 42;
+	}
+
+	if (n > 0) {
+		if (flac_reserve(d, n) < 0)
+			return MUX_ERROR_NOMEM;
+		memcpy(d->buf + d->wpos, in, n);
+		d->wpos += n;
+	}
+
+	return flac_pump(d, 0);
+}
+
+/* Parser emit shim: route audio bytes into the FLAC feed buffer; side through. */
 static int flac_parser_emit(void *user, int stream_type, const void *chunk,
 			    size_t size, int flags)
 {
@@ -444,22 +540,7 @@ static int flac_parser_emit(void *user, int stream_type, const void *chunk,
 	if (stream_type == MUX_STREAM_SIDE_CHANNEL)
 		return mux_decoder_emit(dec, stream_type, chunk, size, flags);
 
-	if (data->frame_len + size > FLAC_FRAME_CAP) {
-		data->overflow = 1;
-		mux_decoder_set_error(dec, MUX_ERROR_FORMAT,
-				      "FLAC frame exceeds reassembly buffer",
-				      NULL, 0, NULL);
-		return MUX_ERROR_FORMAT;
-	}
-	if (size) {
-		memcpy(data->frame + data->frame_len, chunk, size);
-		data->frame_len += size;
-	}
-
-	if (flags & MUX_EMIT_FRAME_END)
-		return flac_decode_unit(data);
-
-	return MUX_OK;
+	return flac_feed_audio(data, chunk, size);
 }
 
 static int mux_flac_decoder_decode(struct mux_decoder *dec, const void *input,
@@ -480,8 +561,16 @@ static int mux_flac_decoder_decode(struct mux_decoder *dec, const void *input,
 
 static int mux_flac_decoder_finalize(struct mux_decoder *dec)
 {
-	(void)dec;  /* frames are decoded as they complete; nothing buffered */
-	return MUX_OK;
+	struct flac_decoder_data *data;
+
+	if (!dec)
+		return MUX_ERROR_INVAL;
+	data = dec->codec_data;
+	if (!data || !data->buf)
+		return MUX_OK;   /* nothing was ever decoded */
+
+	data->finalizing = 1;
+	return flac_pump(data, 1);
 }
 
 const struct mux_codec_ops mux_codec_flac_ops = {

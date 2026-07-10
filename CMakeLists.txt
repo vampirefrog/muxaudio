@@ -822,6 +822,10 @@ else()
                 add_executable(test_flac_validation tests/test_flac_validation.c)
                 target_link_libraries(test_flac_validation ${MUXAUDIO_LINK_TARGET} test_utils m)
                 add_test(NAME flac_validation COMMAND test_flac_validation)
+
+                add_executable(test_flac_stream tests/test_flac_stream.c)
+                target_link_libraries(test_flac_stream ${MUXAUDIO_LINK_TARGET} m)
+                add_test(NAME flac_stream COMMAND test_flac_stream)
             endif()
 
             if(FDK_AAC_FOUND)
