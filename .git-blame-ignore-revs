@@ -1,0 +1,6 @@
+# Revisions to ignore in `git blame` (bulk reformatting, no logic changes).
+# Enable locally once:  git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub applies this file automatically.
+
+# style: reformat all C sources with clang-format
+ee66410bb89b6a7653081fd90d9f706208caad58
