@@ -865,3 +865,39 @@ else()
     message(STATUS "=============================")
     message(STATUS "")
 endif()
+
+# ---------------------------------------------------------------------------
+# Formatting targets (clang-format)
+#   cmake --build build --target format         # reformat sources in place
+#   cmake --build build --target format-check   # verify, fail if unformatted
+# ---------------------------------------------------------------------------
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+if(CLANG_FORMAT_EXE)
+    file(GLOB_RECURSE MUXAUDIO_FORMAT_SOURCES
+        CONFIGURE_DEPENDS
+        RELATIVE ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src/*.c
+        ${CMAKE_SOURCE_DIR}/src/*.h
+        ${CMAKE_SOURCE_DIR}/include/*.h
+        ${CMAKE_SOURCE_DIR}/tests/*.c
+        ${CMAKE_SOURCE_DIR}/tests/*.h
+        ${CMAKE_SOURCE_DIR}/tools/*.c
+        ${CMAKE_SOURCE_DIR}/tools/*.h
+    )
+
+    add_custom_target(format
+        COMMAND ${CLANG_FORMAT_EXE} -i ${MUXAUDIO_FORMAT_SOURCES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Formatting sources with clang-format"
+        VERBATIM
+    )
+
+    add_custom_target(format-check
+        COMMAND ${CLANG_FORMAT_EXE} --dry-run --Werror ${MUXAUDIO_FORMAT_SOURCES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking source formatting with clang-format"
+        VERBATIM
+    )
+else()
+    message(STATUS "clang-format not found: 'format' / 'format-check' targets unavailable")
+endif()
