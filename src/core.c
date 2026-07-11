@@ -169,6 +169,26 @@ int mux_get_supported_sample_rates(
 	return MUX_OK;
 }
 
+int mux_sample_rate_supported(enum mux_codec_type codec_type, int sample_rate) {
+	struct mux_sample_rate_list list;
+	int ret = mux_get_supported_sample_rates(codec_type, &list);
+	if(ret != MUX_OK)
+		return ret;
+
+	if(list.is_range) {
+		if(list.count < 2 || !list.rates)
+			return MUX_ERROR_INVAL;
+		return (sample_rate >= list.rates[0] && sample_rate <= list.rates[1]) ? MUX_OK
+		                                                                     : MUX_ERROR_INVAL;
+	}
+
+	for(int i = 0; i < list.count; i++) {
+		if(list.rates[i] == sample_rate)
+			return MUX_OK;
+	}
+	return MUX_ERROR_INVAL;
+}
+
 /*
  * Output helpers
  */

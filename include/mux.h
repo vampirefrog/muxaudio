@@ -190,6 +190,13 @@ int mux_get_supported_sample_rates(
 );
 
 /*
+ * Convenience: check whether a specific sample rate is accepted by a codec.
+ * Returns MUX_OK if supported, MUX_ERROR_INVAL if not, or MUX_ERROR_NOCODEC
+ * if the codec isn't compiled into this build.
+ */
+int mux_sample_rate_supported(enum mux_codec_type codec_type, int sample_rate);
+
+/*
  * Encoder - static allocation
  * 'sink' receives the muxed output and is required (may not be NULL).
  */
