@@ -25,7 +25,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Install Dependencies
       run: |
@@ -61,7 +61,7 @@ jobs:
         if [ -f ./test_errors ]; then ./test_errors; fi
 
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: native-linux-${{ github.sha }}-${{ matrix.config.name }}
         path: |
