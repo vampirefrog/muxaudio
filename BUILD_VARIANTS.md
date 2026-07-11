@@ -86,11 +86,30 @@ cmake -B build -S . `
   -DBUILD_ALL_CODECS=ON `
   -DBUILD_SHARED=OFF `
   -DBUILD_STATIC_FULL=ON `
+  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
   -DCMAKE_BUILD_TYPE=Release `
   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
   -DVCPKG_TARGET_TRIPLET=x64-windows-static
 cmake --build build --config Release
 ```
+
+### Windows - Self-contained DLL (codecs linked in, vcpkg)
+Build a shared library against the static-triplet codecs so all codec code is
+linked into `muxaudio.dll` (no external codec DLLs needed):
+```powershell
+cmake -B build -S . `
+  -DBUILD_ALL_CODECS=ON `
+  -DBUILD_SHARED=ON `
+  -DBUILD_STATIC_FULL=OFF `
+  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+  -DVCPKG_TARGET_TRIPLET=x64-windows-static
+cmake --build build --config Release
+```
+
+For **32-bit** builds, add `-A Win32` and use the `x86-windows` /
+`x86-windows-static` triplets (default platform is x64).
 
 ### WASM
 ```bash
@@ -144,26 +163,39 @@ cl myapp.c muxaudio-static.lib vorbisenc.lib vorbis.lib opus.lib FLAC.lib ^
 
 ## Release Packages
 
-The release workflow creates the following packages:
+The release workflow creates the following packages. Every archive includes the
+public header `mux.h` and a `README.txt`.
 
-1. **muxaudio-linux-x64-shared.tar.gz**
-   - Shared library + codec .so files + CLI tools
+**Linux**
 
-2. **muxaudio-linux-x64-static.tar.gz**
-   - Static library + codec .a files + README
+1. **muxaudio-linux-x64-shared.tar.gz** - shared library + codec .so files + CLI tools
+2. **muxaudio-linux-x64-static.tar.gz** - static library + codec .a files
 
-3. **muxaudio-windows-x64-shared.zip**
-   - DLL + import library + codec DLLs
+**Windows** - three linkage variants, each in **x64** and **x86**:
 
-4. **muxaudio-windows-x64-static.zip**
-   - Static library + codec .lib files + README
+3. **muxaudio-windows-{x64,x86}-shared.zip**
+   - `muxaudio.dll` + import `muxaudio.lib`, with external codec DLLs alongside
+4. **muxaudio-windows-{x64,x86}-shared-bundled.zip**
+   - Self-contained `muxaudio.dll` (codecs statically linked in, static CRT) +
+     import `muxaudio.lib`; **no external codec DLLs required**
+5. **muxaudio-windows-{x64,x86}-static.zip**
+   - `muxaudio-static.lib` + codec `.lib` files
 
-5. **muxaudio-wasm-decoder.tar.gz**
-   - WASM module (decoder-only) with embedded codecs
+**WASM**
+
+6. **muxaudio-wasm-decoder.tar.gz** - WASM module (decoder-only) with embedded codecs
+
+**Debian** (from the `.deb` build) already ships both linkages with external
+system codec libraries: `libmuxaudio0` (shared/dynamic) and `libmuxaudio-static.a`
+inside `libmuxaudio-dev` (static), alongside `muxaudio-tools`.
 
 ## Notes
 
-- Static libraries on Linux/Windows do not actually "embed" codec code in the .a/.lib file
-- They still require linking against codec static libraries when building your application
-- The advantage is no runtime DLL/SO dependencies - everything is compiled into your executable
-- For WASM, codecs are truly embedded into the .wasm module (fully self-contained)
+- The **self-contained Windows DLL** (`shared-bundled`) links the codec static
+  libraries into `muxaudio.dll` itself, so consumers ship a single DLL. It uses
+  the static CRT (`x64-windows-static` / `x86-windows-static` triplets with
+  `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`).
+- The plain **static** libraries on Linux/Windows do not "embed" codec code in
+  the .a/.lib file - they still require linking the codec static libraries when
+  building your application. The advantage is no runtime DLL/SO dependencies.
+- For WASM, codecs are truly embedded into the .wasm module (fully self-contained).

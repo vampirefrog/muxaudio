@@ -667,6 +667,11 @@ else()
     if(BUILD_SHARED)
         add_library(muxaudio SHARED ${MUXAUDIO_SOURCES})
 
+        # On MSVC, auto-export the public API so the import library (.lib) is
+        # populated - without this the DLL exports nothing and is unlinkable.
+        # No-op on non-Windows toolchains.
+        set_target_properties(muxaudio PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
         target_include_directories(muxaudio
             PUBLIC
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

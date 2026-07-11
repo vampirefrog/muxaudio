@@ -210,8 +210,42 @@ jobs:
         path: release/*.deb
         retention-days: 1
 
-  build-windows-shared:
+  build-windows:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x64-shared
+            platform: x64
+            triplet: x64-windows
+            kind: shared-external
+            cmake_flags: "-DBUILD_SHARED=ON -DBUILD_STATIC_FULL=OFF"
+          - name: x86-shared
+            platform: Win32
+            triplet: x86-windows
+            kind: shared-external
+            cmake_flags: "-DBUILD_SHARED=ON -DBUILD_STATIC_FULL=OFF"
+          - name: x64-shared-bundled
+            platform: x64
+            triplet: x64-windows-static
+            kind: shared-bundled
+            cmake_flags: "-DBUILD_SHARED=ON -DBUILD_STATIC_FULL=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+          - name: x86-shared-bundled
+            platform: Win32
+            triplet: x86-windows-static
+            kind: shared-bundled
+            cmake_flags: "-DBUILD_SHARED=ON -DBUILD_STATIC_FULL=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+          - name: x64-static
+            platform: x64
+            triplet: x64-windows-static
+            kind: static
+            cmake_flags: "-DBUILD_SHARED=OFF -DBUILD_STATIC_FULL=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+          - name: x86-static
+            platform: Win32
+            triplet: x86-windows-static
+            kind: static
+            cmake_flags: "-DBUILD_SHARED=OFF -DBUILD_STATIC_FULL=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
 
     steps:
     - name: Checkout
@@ -227,170 +261,110 @@ jobs:
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
 
-    - name: Install Shared Dependencies
+    - name: Install Dependencies
       run: |
-        vcpkg install --triplet x64-windows
+        vcpkg install --triplet ${{ matrix.triplet }}
 
-    - name: Build Shared Library
+    - name: Build
       run: |
         mkdir build
         cd build
-        cmake .. -DBUILD_ALL_CODECS=ON `
+        cmake .. -A ${{ matrix.platform }} `
+          -DBUILD_ALL_CODECS=ON `
           -DBUILD_ENCODERS=ON `
           -DBUILD_DECODERS=ON `
           -DBUILD_TOOLS=OFF `
           -DBUILD_TESTS=OFF `
-          -DBUILD_SHARED=ON `
-          -DBUILD_STATIC_FULL=OFF `
+          ${{ matrix.cmake_flags }} `
           -DCMAKE_BUILD_TYPE=Release `
           -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
-          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
         cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
 
-    - name: Package Shared Library
+    - name: Package
+      env:
+        PKG_NAME: windows-${{ matrix.name }}
+        KIND: ${{ matrix.kind }}
+        TRIPLET: ${{ matrix.triplet }}
       run: |
-        mkdir -p release/windows-x64-shared
+        $pkgDir = "release/$env:PKG_NAME"
+        New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
 
-        # Debug: Show what was built
         Write-Host "Contents of build/Release:"
         Get-ChildItem build/Release -ErrorAction SilentlyContinue
 
-        # Copy muxaudio binaries (copy what exists)
-        Get-ChildItem build/Release/muxaudio.* -ErrorAction SilentlyContinue | ForEach-Object {
-          Copy-Item $_.FullName release/windows-x64-shared/
-          Write-Host "Copied: $($_.Name)"
-        }
+        # muxaudio outputs: DLL + import lib (shared) or static lib
+        Get-ChildItem build/Release -File -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -like 'muxaudio*' -and ($_.Extension -eq '.dll' -or $_.Extension -eq '.lib') } |
+          ForEach-Object { Copy-Item $_.FullName $pkgDir/; Write-Host "Copied: $($_.Name)" }
 
-        # Copy codec DLLs from vcpkg
-        $vcpkgBin = "$env:VCPKG_ROOT/installed/x64-windows/bin"
-        if (Test-Path $vcpkgBin) {
-          Write-Host "Copying DLLs from: $vcpkgBin"
-          Get-ChildItem "$vcpkgBin/*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName release/windows-x64-shared/
-            Write-Host "Copied: $($_.Name)"
+        # Public header
+        Copy-Item include/mux.h $pkgDir/
+        Write-Host "Copied: mux.h"
+
+        # Codec dependencies, per variant
+        switch ($env:KIND) {
+          'shared-external' {
+            $src = "$env:VCPKG_ROOT/installed/$env:TRIPLET/bin"
+            if (Test-Path $src) {
+              Get-ChildItem "$src/*.dll" -ErrorAction SilentlyContinue |
+                ForEach-Object { Copy-Item $_.FullName $pkgDir/; Write-Host "Codec DLL: $($_.Name)" }
+            } else { Write-Host "Warning: $src not found" }
           }
-        } else {
-          Write-Host "Warning: vcpkg bin directory not found at $vcpkgBin"
+          'static' {
+            $src = "$env:VCPKG_ROOT/installed/$env:TRIPLET/lib"
+            if (Test-Path $src) {
+              Get-ChildItem "$src/*.lib" -ErrorAction SilentlyContinue |
+                ForEach-Object { Copy-Item $_.FullName $pkgDir/; Write-Host "Codec lib: $($_.Name)" }
+            } else { Write-Host "Warning: $src not found" }
+          }
+          'shared-bundled' {
+            Write-Host "Self-contained DLL: codecs linked in, no external codec files."
+          }
         }
 
-        # Show what we packaged
-        Write-Host "Contents of release/windows-x64-shared:"
-        Get-ChildItem release/windows-x64-shared
+        # Per-variant README
+        switch ($env:KIND) {
+          'shared-external' {
+            Set-Content -Path $pkgDir/README.txt -Value @(
+              "MuxAudio - Shared DLL (external codecs)",
+              "=======================================",
+              "Link your app against muxaudio.lib and include mux.h.",
+              "Ship muxaudio.dll AND the codec DLLs in this archive next to your app.")
+          }
+          'shared-bundled' {
+            Set-Content -Path $pkgDir/README.txt -Value @(
+              "MuxAudio - Self-contained Shared DLL",
+              "====================================",
+              "Codecs are statically linked into muxaudio.dll (static CRT).",
+              "Link your app against muxaudio.lib and include mux.h.",
+              "Ship only muxaudio.dll - no external codec DLLs are required.")
+          }
+          'static' {
+            Set-Content -Path $pkgDir/README.txt -Value @(
+              "MuxAudio - Static Library",
+              "=========================",
+              "Contains muxaudio-static.lib plus all codec static libraries, and mux.h.",
+              "",
+              "Linker input:",
+              "  muxaudio-static.lib vorbisenc.lib vorbis.lib opus.lib FLAC.lib mpg123.lib fdk-aac.lib ogg.lib",
+              "",
+              "CMake:",
+              "  target_link_libraries(yourapp",
+              "    `${CMAKE_CURRENT_SOURCE_DIR}/muxaudio-static.lib",
+              "    vorbisenc vorbis opus FLAC mpg123 fdk-aac ogg)")
+          }
+        }
 
-        cd release
-        Compress-Archive -Path windows-x64-shared -DestinationPath muxaudio-windows-x64-shared.zip
+        Write-Host "Contents of ${pkgDir}:"
+        Get-ChildItem $pkgDir
+        Compress-Archive -Path $pkgDir -DestinationPath "release/muxaudio-$env:PKG_NAME.zip"
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v7
       with:
-        name: windows-shared-release
-        path: release/muxaudio-windows-x64-shared.zip
-        retention-days: 1
-
-  build-windows-static:
-    runs-on: windows-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v7
-
-    - name: Export GitHub Actions cache environment variables
-      uses: actions/github-script@v9
-      with:
-        script: |
-          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11
-
-    - name: Install Static Dependencies
-      run: |
-        vcpkg install --triplet x64-windows-static
-
-    - name: Build Static Library
-      run: |
-        mkdir build
-        cd build
-        cmake .. -DBUILD_ALL_CODECS=ON `
-          -DBUILD_ENCODERS=ON `
-          -DBUILD_DECODERS=ON `
-          -DBUILD_TOOLS=OFF `
-          -DBUILD_TESTS=OFF `
-          -DBUILD_SHARED=OFF `
-          -DBUILD_STATIC_FULL=ON `
-          -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
-          -DVCPKG_TARGET_TRIPLET=x64-windows-static
-        cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
-
-    - name: Package Static Library
-      run: |
-        mkdir -p release/windows-x64-static
-
-        # Debug: Show what was built
-        Write-Host "Contents of build/Release:"
-        Get-ChildItem build/Release -ErrorAction SilentlyContinue
-
-        # Copy muxaudio static library (copy what exists)
-        Get-ChildItem build/Release/muxaudio* -ErrorAction SilentlyContinue | ForEach-Object {
-          Copy-Item $_.FullName release/windows-x64-static/
-          Write-Host "Copied: $($_.Name)"
-        }
-
-        # Debug: Check vcpkg installation
-        Write-Host "Checking vcpkg directories..."
-        Write-Host "VCPKG_ROOT: $env:VCPKG_ROOT"
-        if (Test-Path "$env:VCPKG_ROOT/installed/x64-windows-static") {
-          Write-Host "Contents of x64-windows-static/lib:"
-          Get-ChildItem "$env:VCPKG_ROOT/installed/x64-windows-static/lib" -ErrorAction SilentlyContinue | Select-Object Name
-        }
-
-        # Copy codec static libraries from vcpkg
-        $vcpkgLib = "$env:VCPKG_ROOT/installed/x64-windows-static/lib"
-        if (Test-Path $vcpkgLib) {
-          Write-Host "Found vcpkg lib directory: $vcpkgLib"
-          Get-ChildItem "$vcpkgLib/*.lib" -ErrorAction SilentlyContinue | ForEach-Object {
-            Copy-Item $_.FullName release/windows-x64-static/
-            Write-Host "Copied: $($_.Name)"
-          }
-        } else {
-          Write-Host "Warning: vcpkg lib directory not found at $vcpkgLib"
-        }
-
-        # Show what we packaged
-        Write-Host "Contents of release/windows-x64-static:"
-        Get-ChildItem release/windows-x64-static
-
-        # Create README with linking instructions
-        Set-Content -Path release/windows-x64-static/README.txt -Value @(
-          "MuxAudio Static Library Build",
-          "==============================",
-          "",
-          "This package contains muxaudio-static.lib and all required codec static libraries.",
-          "",
-          "To link against this library in your Visual Studio project:",
-          "",
-          "1. Add all .lib files to your project's linker input",
-          "2. Or use this linker command:",
-          "   muxaudio-static.lib vorbisenc.lib vorbis.lib opus.lib FLAC.lib mpg123.lib fdk-aac.lib ogg.lib",
-          "",
-          "With CMake:",
-          "",
-          "target_link_libraries(yourapp",
-          "  `${CMAKE_CURRENT_SOURCE_DIR}/muxaudio-static.lib",
-          "  vorbisenc vorbis opus FLAC mpg123 fdk-aac ogg",
-          ")"
-        )
-
-        cd release
-        Compress-Archive -Path windows-x64-static -DestinationPath muxaudio-windows-x64-static.zip
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: windows-static-release
-        path: release/muxaudio-windows-x64-static.zip
+        name: windows-${{ matrix.name }}
+        path: release/muxaudio-windows-${{ matrix.name }}.zip
         retention-days: 1
 
   build-wasm:
@@ -451,7 +425,7 @@ jobs:
         retention-days: 1
 
   create-release:
-    needs: [build-linux-shared, build-linux-static, build-deb, build-windows-shared, build-windows-static, build-wasm]
+    needs: [build-linux-shared, build-linux-static, build-deb, build-windows, build-wasm]
     runs-on: ubuntu-latest
 
     steps:
@@ -473,16 +447,11 @@ jobs:
         name: deb-packages
         path: release
 
-    - name: Download Windows Shared Artifact
+    - name: Download Windows Artifacts (all archs/variants)
       uses: actions/download-artifact@v8
       with:
-        name: windows-shared-release
-        path: release
-
-    - name: Download Windows Static Artifact
-      uses: actions/download-artifact@v8
-      with:
-        name: windows-static-release
+        pattern: windows-*
+        merge-multiple: true
         path: release
 
     - name: Download WASM Artifact
@@ -523,17 +492,22 @@ jobs:
 
           ### Windows Builds
 
-          **Shared Library (`muxaudio-windows-x64-shared.zip`)**
-          - `muxaudio.dll` - shared library with external codec dependencies
-          - `muxaudio.lib` - import library
-          - All codec DLLs included (ogg.dll, vorbis.dll, opus.dll, etc.)
+          Three linkage variants, each in **x64** and **x86** (`mux.h` + a
+          `README.txt` included in every archive):
+
+          **Shared, external codecs (`muxaudio-windows-{x64,x86}-shared.zip`)**
+          - `muxaudio.dll` + `muxaudio.lib` import library
+          - Ships the codec DLLs (ogg.dll, vorbis.dll, opus.dll, etc.) alongside
           - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
 
-          **Static Library (`muxaudio-windows-x64-static.zip`)**
-          - `muxaudio-static.lib` - static library
-          - All codec static libraries included (`.lib` files)
-          - No runtime codec DLL dependencies
-          - Includes README with linking instructions
+          **Shared, self-contained (`muxaudio-windows-{x64,x86}-shared-bundled.zip`)**
+          - `muxaudio.dll` + `muxaudio.lib` with all codecs linked into the DLL
+          - Static CRT; ship **only** `muxaudio.dll` - no external codec DLLs
+          - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
+
+          **Static library (`muxaudio-windows-{x64,x86}-static.zip`)**
+          - `muxaudio-static.lib` + all codec static `.lib` files
+          - No runtime codec DLL dependencies; link everything into your app
           - Codecs: PCM, Vorbis, Opus, FLAC, MP3, AAC
 
           ### WASM Build
@@ -594,5 +568,9 @@ jobs:
           release/muxaudio-linux-x64-static.tar.gz
           release/*.deb
           release/muxaudio-windows-x64-shared.zip
+          release/muxaudio-windows-x64-shared-bundled.zip
           release/muxaudio-windows-x64-static.zip
+          release/muxaudio-windows-x86-shared.zip
+          release/muxaudio-windows-x86-shared-bundled.zip
+          release/muxaudio-windows-x86-static.zip
           release/muxaudio-wasm-decoder.tar.gz

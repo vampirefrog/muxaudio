@@ -12,17 +12,37 @@ jobs:
     runs-on: windows-latest
 
     strategy:
+      fail-fast: false
       matrix:
         config:
-          - name: "All Codecs (Both)"
+          # Codec-coverage checks (x64, default shared + static)
+          - name: x64-all-codecs
+            platform: x64
+            triplet: x64-windows
             cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=ON -DBUILD_DECODERS=ON"
-            codecs: "PCM, Vorbis, Opus, FLAC, MP3, AAC"
-          - name: "All Codecs (Decoder Only)"
+          - name: x64-decoder-only
+            platform: x64
+            triplet: x64-windows
             cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=OFF -DBUILD_DECODERS=ON"
-            codecs: "PCM, Vorbis, Opus, FLAC, MP3 (decode only)"
-          - name: "PCM + Vorbis Only"
+          - name: x64-pcm-vorbis
+            platform: x64
+            triplet: x64-windows
             cmake_flags: "-DCODEC_VORBIS=ON -DCODEC_OPUS=OFF -DCODEC_FLAC=OFF -DCODEC_MP3=OFF -DCODEC_AAC=OFF"
-            codecs: "PCM, Vorbis"
+          # 32-bit toolchain check
+          - name: x86-all-codecs
+            platform: Win32
+            triplet: x86-windows
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=ON -DBUILD_DECODERS=ON"
+          # Self-contained DLL checks (static triplet + shared lib + static CRT) -
+          # exercises the CRT/link path used by the release "shared-bundled" zips.
+          - name: x64-self-contained-dll
+            platform: x64
+            triplet: x64-windows-static
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=ON -DBUILD_DECODERS=ON -DBUILD_SHARED=ON -DBUILD_STATIC_FULL=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+          - name: x86-self-contained-dll
+            platform: Win32
+            triplet: x86-windows-static
+            cmake_flags: "-DBUILD_ALL_CODECS=ON -DBUILD_ENCODERS=ON -DBUILD_DECODERS=ON -DBUILD_SHARED=ON -DBUILD_STATIC_FULL=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
 
     steps:
     - name: Checkout
@@ -47,45 +67,59 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake .. ${{ matrix.config.cmake_flags }} `
+        cmake .. -A ${{ matrix.config.platform }} `
+          ${{ matrix.config.cmake_flags }} `
           -DCMAKE_BUILD_TYPE=Release `
           -DBUILD_TOOLS=OFF `
           -DBUILD_TESTS=OFF `
           -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" `
-          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DVCPKG_TARGET_TRIPLET=${{ matrix.config.triplet }}
 
     - name: Build
       run: |
         cd build
         cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
 
-    - name: Copy Codec DLLs
+    - name: Verify DLL exports the public API
       run: |
-        $vcpkgBin = "$env:VCPKG_ROOT/installed/x64-windows/bin"
-        Copy-Item "$vcpkgBin/ogg.dll" build/Release/ -ErrorAction SilentlyContinue
-        Copy-Item "$vcpkgBin/vorbis.dll" build/Release/ -ErrorAction SilentlyContinue
-        Copy-Item "$vcpkgBin/vorbisenc.dll" build/Release/ -ErrorAction SilentlyContinue
-        Copy-Item "$vcpkgBin/opus.dll" build/Release/ -ErrorAction SilentlyContinue
-        Copy-Item "$vcpkgBin/FLAC.dll" build/Release/ -ErrorAction SilentlyContinue
-        Copy-Item "$vcpkgBin/mpg123.dll" build/Release/ -ErrorAction SilentlyContinue
-        Copy-Item "$vcpkgBin/fdk-aac-2.dll" build/Release/ -ErrorAction SilentlyContinue
+        $dll = "build/Release/muxaudio.dll"
+        if (-not (Test-Path $dll)) {
+          Write-Host "No muxaudio.dll built (static-only config); skipping."
+          exit 0
+        }
+        $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
+        if (-not $dumpbin) {
+          Write-Host "dumpbin not on PATH; skipping export check."
+          exit 0
+        }
+        $exports = & dumpbin /exports $dll | Out-String
+        Write-Host $exports
+        if ($exports -match 'mux_encoder_new') {
+          Write-Host "OK: muxaudio.dll exports the public API."
+        } else {
+          Write-Error "muxaudio.dll exports no mux_ symbols - import lib would be empty."
+          exit 1
+        }
+
+    - name: Copy Codec DLLs (shared-external only)
+      run: |
+        $vcpkgBin = "$env:VCPKG_ROOT/installed/${{ matrix.config.triplet }}/bin"
+        if (Test-Path $vcpkgBin) {
+          Copy-Item "$vcpkgBin/*.dll" build/Release/ -ErrorAction SilentlyContinue
+        }
 
     - name: Display Build Info
       run: |
         cd build/Release
         echo "=== DLL Files ==="
-        Get-ChildItem *.dll | Format-Table Name, Length
-        echo ""
+        Get-ChildItem *.dll -ErrorAction SilentlyContinue | Format-Table Name, Length
         echo "=== LIB Files ==="
-        Get-ChildItem *.lib | Format-Table Name, Length
-        echo ""
-        echo "=== Codecs Included ==="
-        echo "${{ matrix.config.codecs }}"
+        Get-ChildItem *.lib -ErrorAction SilentlyContinue | Format-Table Name, Length
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v7
       with:
-        name: windows-x64-${{ matrix.config.name }}
+        name: windows-${{ matrix.config.name }}
         path: |
           build/Release/*.dll
           build/Release/*.lib
