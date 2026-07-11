@@ -302,21 +302,37 @@ jobs:
         Copy-Item include/mux.h $pkgDir/
         Write-Host "Copied: mux.h"
 
-        # Codec dependencies, per variant
+        # Codec dependencies, per variant. In vcpkg manifest mode the deps land
+        # in a `vcpkg_installed/<triplet>` tree (NOT $VCPKG_ROOT/installed), whose
+        # exact root varies, so search the likely locations for the triplet's
+        # release bin/lib artifacts.
+        function Copy-CodecFiles($subdir, $ext) {
+          $roots = @('vcpkg_installed', 'build/vcpkg_installed', 'build') | Where-Object { Test-Path $_ }
+          $files = @()
+          foreach ($r in $roots) {
+            $files += Get-ChildItem -Path $r -Recurse -File -Filter "*.$ext" -ErrorAction SilentlyContinue |
+              Where-Object {
+                $p = $_.FullName -replace '\\', '/'
+                $p -match "/$env:TRIPLET/$subdir/" -and $p -notmatch '/debug/' -and $_.Name -notlike 'muxaudio*'
+              }
+          }
+          $files = $files | Sort-Object Name -Unique
+          foreach ($f in $files) { Copy-Item $f.FullName $pkgDir/ -Force; Write-Host "Codec: $($f.Name)" }
+          return ($files | Measure-Object).Count
+        }
+
         switch ($env:KIND) {
           'shared-external' {
-            $src = "$env:VCPKG_ROOT/installed/$env:TRIPLET/bin"
-            if (Test-Path $src) {
-              Get-ChildItem "$src/*.dll" -ErrorAction SilentlyContinue |
-                ForEach-Object { Copy-Item $_.FullName $pkgDir/; Write-Host "Codec DLL: $($_.Name)" }
-            } else { Write-Host "Warning: $src not found" }
+            if ((Copy-CodecFiles 'bin' 'dll') -eq 0) {
+              Write-Error "No codec DLLs found for $env:TRIPLET - external package would be incomplete."
+              exit 1
+            }
           }
           'static' {
-            $src = "$env:VCPKG_ROOT/installed/$env:TRIPLET/lib"
-            if (Test-Path $src) {
-              Get-ChildItem "$src/*.lib" -ErrorAction SilentlyContinue |
-                ForEach-Object { Copy-Item $_.FullName $pkgDir/; Write-Host "Codec lib: $($_.Name)" }
-            } else { Write-Host "Warning: $src not found" }
+            if ((Copy-CodecFiles 'lib' 'lib') -eq 0) {
+              Write-Error "No codec .lib files found for $env:TRIPLET - static package would be incomplete."
+              exit 1
+            }
           }
           'shared-bundled' {
             Write-Host "Self-contained DLL: codecs linked in, no external codec files."
