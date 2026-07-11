@@ -87,12 +87,19 @@ jobs:
           Write-Host "No muxaudio.dll built (static-only config); skipping."
           exit 0
         }
-        $dumpbin = Get-Command dumpbin -ErrorAction SilentlyContinue
-        if (-not $dumpbin) {
-          Write-Host "dumpbin not on PATH; skipping export check."
-          exit 0
+        # dumpbin isn't on PATH in the default shell; locate it via vswhere.
+        $dumpbinExe = (Get-Command dumpbin -ErrorAction SilentlyContinue).Source
+        if (-not $dumpbinExe) {
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -property installationPath
+          $dumpbinExe = (Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
         }
-        $exports = & dumpbin /exports $dll | Out-String
+        if (-not $dumpbinExe) {
+          Write-Error "dumpbin.exe not found - cannot verify DLL exports."
+          exit 1
+        }
+        Write-Host "Using dumpbin: $dumpbinExe"
+        $exports = & $dumpbinExe /exports $dll | Out-String
         Write-Host $exports
         if ($exports -match 'mux_encoder_new') {
           Write-Host "OK: muxaudio.dll exports the public API."
