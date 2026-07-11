@@ -178,8 +178,7 @@ int mux_sample_rate_supported(enum mux_codec_type codec_type, int sample_rate) {
 	if(list.is_range) {
 		if(list.count < 2 || !list.rates)
 			return MUX_ERROR_INVAL;
-		return (sample_rate >= list.rates[0] && sample_rate <= list.rates[1]) ? MUX_OK
-		                                                                     : MUX_ERROR_INVAL;
+		return (sample_rate >= list.rates[0] && sample_rate <= list.rates[1]) ? MUX_OK : MUX_ERROR_INVAL;
 	}
 
 	for(int i = 0; i < list.count; i++) {
