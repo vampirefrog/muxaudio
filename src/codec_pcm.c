@@ -116,6 +116,8 @@ static int pcm_decoder_finalize(struct mux_decoder *dec) {
  */
 static const int pcm_sample_rates[] = {1000, 384000}; /* Min/max range */
 
+static const char *const pcm_file_extensions[] = { "pcm", "raw" };
+
 const struct mux_codec_ops mux_codec_pcm_ops = {
 	.encoder_init = pcm_encoder_init,
 	.encoder_deinit = pcm_encoder_deinit,
@@ -134,5 +136,7 @@ const struct mux_codec_ops mux_codec_pcm_ops = {
 
 	.supported_sample_rates = pcm_sample_rates,
 	.sample_rate_count = 2,
-	.sample_rate_is_range = 1
+	.sample_rate_is_range = 1,
+	.file_extensions = pcm_file_extensions,
+	.file_extension_count = sizeof(pcm_file_extensions) / sizeof(pcm_file_extensions[0])
 };

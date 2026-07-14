@@ -532,6 +532,8 @@ static int mux_aac_decoder_finalize(struct mux_decoder *dec) {
 	return MUX_OK;
 }
 
+static const char *const aac_file_extensions[] = { "aac" };
+
 const struct mux_codec_ops mux_codec_aac_ops = {
 	.encoder_init = mux_aac_encoder_init,
 	.encoder_deinit = mux_aac_encoder_deinit,
@@ -550,5 +552,7 @@ const struct mux_codec_ops mux_codec_aac_ops = {
 
 	.supported_sample_rates = aac_sample_rates,
 	.sample_rate_count = sizeof(aac_sample_rates) / sizeof(aac_sample_rates[0]),
-	.sample_rate_is_range = 0
+	.sample_rate_is_range = 0,
+	.file_extensions = aac_file_extensions,
+	.file_extension_count = sizeof(aac_file_extensions) / sizeof(aac_file_extensions[0])
 };

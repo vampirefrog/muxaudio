@@ -397,6 +397,8 @@ static int amr_decoder_finalize(struct mux_decoder *dec) {
 
 static const int amr_sample_rates[] = {8000};
 
+static const char *const amr_file_extensions[] = { "amr" };
+
 const struct mux_codec_ops mux_codec_amr_ops = {
 	.encoder_init = amr_encoder_init,
 	.encoder_deinit = amr_encoder_deinit,
@@ -415,7 +417,9 @@ const struct mux_codec_ops mux_codec_amr_ops = {
 
 	.supported_sample_rates = amr_sample_rates,
 	.sample_rate_count = 1,
-	.sample_rate_is_range = 0
+	.sample_rate_is_range = 0,
+	.file_extensions = amr_file_extensions,
+	.file_extension_count = sizeof(amr_file_extensions) / sizeof(amr_file_extensions[0])
 };
 
 #endif /* HAVE_AMR */

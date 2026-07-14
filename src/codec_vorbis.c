@@ -587,6 +587,8 @@ static int vorbis_decoder_finalize(struct mux_decoder *dec) {
 
 static const int vorbis_sample_rates[] = {1000, 384000}; /* Min/max range */
 
+static const char *const vorbis_file_extensions[] = { "ogg", "oga" };
+
 const struct mux_codec_ops mux_codec_vorbis_ops = {
 	.encoder_init = vorbis_encoder_init,
 	.encoder_deinit = vorbis_encoder_deinit,
@@ -605,5 +607,7 @@ const struct mux_codec_ops mux_codec_vorbis_ops = {
 
 	.supported_sample_rates = vorbis_sample_rates,
 	.sample_rate_count = 2,
-	.sample_rate_is_range = 1
+	.sample_rate_is_range = 1,
+	.file_extensions = vorbis_file_extensions,
+	.file_extension_count = sizeof(vorbis_file_extensions) / sizeof(vorbis_file_extensions[0])
 };

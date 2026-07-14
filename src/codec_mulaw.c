@@ -286,6 +286,8 @@ static const int mulaw_sample_rates[] = {8000, 48000};
 /*
  * Mu-law codec operations
  */
+static const char *const mulaw_file_extensions[] = { "ul", "ulaw" };
+
 const struct mux_codec_ops mux_codec_mulaw_ops = {
 	.encoder_init = mulaw_encoder_init,
 	.encoder_deinit = mulaw_encoder_deinit,
@@ -304,5 +306,7 @@ const struct mux_codec_ops mux_codec_mulaw_ops = {
 
 	.supported_sample_rates = mulaw_sample_rates,
 	.sample_rate_count = 2,
-	.sample_rate_is_range = 1
+	.sample_rate_is_range = 1,
+	.file_extensions = mulaw_file_extensions,
+	.file_extension_count = sizeof(mulaw_file_extensions) / sizeof(mulaw_file_extensions[0])
 };

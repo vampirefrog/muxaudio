@@ -292,6 +292,8 @@ static const int alaw_sample_rates[] = {8000, 48000};
 /*
  * A-law codec operations
  */
+static const char *const alaw_file_extensions[] = { "al", "alaw" };
+
 const struct mux_codec_ops mux_codec_alaw_ops = {
 	.encoder_init = alaw_encoder_init,
 	.encoder_deinit = alaw_encoder_deinit,
@@ -310,5 +312,7 @@ const struct mux_codec_ops mux_codec_alaw_ops = {
 
 	.supported_sample_rates = alaw_sample_rates,
 	.sample_rate_count = 2,
-	.sample_rate_is_range = 1
+	.sample_rate_is_range = 1,
+	.file_extensions = alaw_file_extensions,
+	.file_extension_count = sizeof(alaw_file_extensions) / sizeof(alaw_file_extensions[0])
 };

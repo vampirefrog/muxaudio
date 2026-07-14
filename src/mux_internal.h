@@ -60,6 +60,12 @@ struct mux_codec_ops {
 	const int *supported_sample_rates;
 	int sample_rate_count;
 	int sample_rate_is_range; /* If true, first two values are min/max */
+
+	/* File extensions this codec claims. Stored without a leading dot,
+	 * lowercase; matched case-insensitively by mux_codec_from_filename.
+	 * NULL / 0 for codecs without a conventional extension. */
+	const char *const *file_extensions;
+	int file_extension_count;
 };
 
 /*

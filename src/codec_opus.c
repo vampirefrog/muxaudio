@@ -674,6 +674,8 @@ static int mux_opus_decoder_finalize(struct mux_decoder *dec) {
 	return MUX_OK;
 }
 
+static const char *const opus_file_extensions[] = { "opus" };
+
 const struct mux_codec_ops mux_codec_opus_ops = {
 	.encoder_init = mux_opus_encoder_init,
 	.encoder_deinit = mux_opus_encoder_deinit,
@@ -692,5 +694,7 @@ const struct mux_codec_ops mux_codec_opus_ops = {
 
 	.supported_sample_rates = opus_sample_rates,
 	.sample_rate_count = sizeof(opus_sample_rates) / sizeof(opus_sample_rates[0]),
-	.sample_rate_is_range = 0
+	.sample_rate_is_range = 0,
+	.file_extensions = opus_file_extensions,
+	.file_extension_count = sizeof(opus_file_extensions) / sizeof(opus_file_extensions[0])
 };

@@ -189,6 +189,63 @@ int mux_sample_rate_supported(enum mux_codec_type codec_type, int sample_rate) {
 	return MUX_ERROR_INVAL;
 }
 
+int mux_codec_get_extensions(
+	enum mux_codec_type codec_type,
+	const char *const **exts,
+	int *count
+) {
+	const struct mux_codec_ops *ops;
+
+	if(!exts || !count)
+		return MUX_ERROR_INVAL;
+
+	ops = mux_get_codec_ops(codec_type);
+	if(!ops)
+		return MUX_ERROR_NOCODEC;
+
+	*exts = ops->file_extensions;
+	*count = ops->file_extension_count;
+	return MUX_OK;
+}
+
+/* ASCII case-insensitive equality (file extensions are always ASCII). */
+static int ext_iequal(const char *a, const char *b) {
+	while(*a && *b) {
+		int ca = (unsigned char)*a, cb = (unsigned char)*b;
+		if(ca >= 'A' && ca <= 'Z') ca += 32;
+		if(cb >= 'A' && cb <= 'Z') cb += 32;
+		if(ca != cb) return 0;
+		a++; b++;
+	}
+	return *a == 0 && *b == 0;
+}
+
+int mux_codec_from_filename(const char *filename, enum mux_codec_type *codec) {
+	const char *dot, *ext;
+	int i, j;
+
+	if(!filename || !codec)
+		return MUX_ERROR_INVAL;
+
+	dot = strrchr(filename, '.');
+	if(!dot || !dot[1])
+		return MUX_ERROR_INVAL;
+	ext = dot + 1;
+
+	for(i = 0; i < MUX_CODEC_MAX; i++) {
+		const struct mux_codec_ops *ops = mux_get_codec_ops((enum mux_codec_type)i);
+		if(!ops || !ops->file_extensions)
+			continue;
+		for(j = 0; j < ops->file_extension_count; j++) {
+			if(ext_iequal(ext, ops->file_extensions[j])) {
+				*codec = (enum mux_codec_type)i;
+				return MUX_OK;
+			}
+		}
+	}
+	return MUX_ERROR_INVAL;
+}
+
 /*
  * Output helpers
  */

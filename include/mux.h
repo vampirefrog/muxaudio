@@ -197,6 +197,30 @@ int mux_get_supported_sample_rates(
 int mux_sample_rate_supported(enum mux_codec_type codec_type, int sample_rate);
 
 /*
+ * File extensions a codec claims (e.g. "mp3", "ogg", "opus"). Stored
+ * without a leading dot, lowercase. Returns MUX_OK and fills *exts /
+ * *count with a pointer to the codec's static extension list; the pointer
+ * remains valid for the process lifetime. count may be 0 for codecs that
+ * don't advertise a conventional file extension.
+ */
+int mux_codec_get_extensions(
+	enum mux_codec_type codec_type,
+	const char *const **exts,
+	int *count
+);
+
+/*
+ * Look up a codec by the extension of a filename. Case-insensitive; matches
+ * on everything after the final '.'  ("song.mp3" and "song.MP3" both map
+ * to MUX_CODEC_MP3). If multiple codecs claim the same extension (e.g.
+ * .ogg for both Vorbis and Opus in principle -- Opus only claims .opus
+ * here to avoid the collision), the codec registered earliest in
+ * mux_codec_type wins. Returns MUX_OK on match, MUX_ERROR_INVAL if the
+ * filename has no extension or no codec claims it.
+ */
+int mux_codec_from_filename(const char *filename, enum mux_codec_type *codec);
+
+/*
  * Encoder - static allocation
  * 'sink' receives the muxed output and is required (may not be NULL).
  */

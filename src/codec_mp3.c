@@ -490,6 +490,8 @@ static int mp3_decoder_finalize(struct mux_decoder *dec) {
 static const int mp3_sample_rates[] =
 	{8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
 
+static const char *const mp3_file_extensions[] = { "mp3" };
+
 const struct mux_codec_ops mux_codec_mp3_ops = {
 #ifdef HAVE_MP3_ENCODE
 	.encoder_init = mp3_encoder_init,
@@ -524,5 +526,7 @@ const struct mux_codec_ops mux_codec_mp3_ops = {
 
 	.supported_sample_rates = mp3_sample_rates,
 	.sample_rate_count = sizeof(mp3_sample_rates) / sizeof(mp3_sample_rates[0]),
-	.sample_rate_is_range = 0
+	.sample_rate_is_range = 0,
+	.file_extensions = mp3_file_extensions,
+	.file_extension_count = sizeof(mp3_file_extensions) / sizeof(mp3_file_extensions[0])
 };

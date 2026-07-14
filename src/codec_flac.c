@@ -633,6 +633,8 @@ static int mux_flac_decoder_finalize(struct mux_decoder *dec) {
 	return flac_pump(data, 1);
 }
 
+static const char *const flac_file_extensions[] = { "flac" };
+
 const struct mux_codec_ops mux_codec_flac_ops = {
 	.encoder_init = mux_flac_encoder_init,
 	.encoder_deinit = mux_flac_encoder_deinit,
@@ -651,5 +653,7 @@ const struct mux_codec_ops mux_codec_flac_ops = {
 
 	.supported_sample_rates = flac_sample_rates,
 	.sample_rate_count = 2,
-	.sample_rate_is_range = 1
+	.sample_rate_is_range = 1,
+	.file_extensions = flac_file_extensions,
+	.file_extension_count = sizeof(flac_file_extensions) / sizeof(flac_file_extensions[0])
 };
