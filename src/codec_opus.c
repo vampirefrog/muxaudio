@@ -34,6 +34,7 @@ struct opus_encoder_data {
 	int sample_rate;
 	int num_channels;
 	int frame_size; /* samples/channel per Opus frame */
+	int64_t granule_inc; /* granulepos step per frame, in 48 kHz samples */
 
 	/* Fixed sub-frame carry: exactly one frame, allocated once at init. */
 	int16_t *pending;
@@ -196,6 +197,10 @@ static int mux_opus_encoder_init(
 	data->sample_rate = sample_rate;
 	data->num_channels = num_channels;
 	data->frame_size = sample_rate / 50; /* 20 ms */
+	/* Ogg Opus granule positions are always in a 48 kHz timebase (RFC 7845),
+	 * independent of the coding rate. A 20 ms frame is 960 samples at 48 kHz
+	 * regardless of sample_rate; deriving it keeps the relation explicit. */
+	data->granule_inc = (int64_t)data->frame_size * 48000 / sample_rate;
 
 	data->pending = malloc((size_t)data->frame_size * num_channels * sizeof(int16_t));
 	if(!data->pending) {
@@ -319,7 +324,7 @@ static int opus_encode_frame(
 	memset(&op, 0, sizeof(op));
 	op.packet = packet;
 	op.bytes = len;
-	data->granule_pos += data->frame_size;
+	data->granule_pos += data->granule_inc;
 	op.granulepos = data->granule_pos;
 	op.packetno = data->packet_count++;
 	ogg_stream_packetin(&data->os_audio, &op);
