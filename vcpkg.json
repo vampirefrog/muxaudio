@@ -9,6 +9,7 @@
     "opus",
     "libflac",
     "mpg123",
+    "mp3lame",
     "fdk-aac"
   ]
 }

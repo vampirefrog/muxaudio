@@ -182,11 +182,25 @@ else()
             set(FDK_AAC_INCLUDE_DIRS "")
         endif()
 
-        # LAME doesn't have vcpkg package, try find_library
-        find_library(LAME_LIBRARY mp3lame)
-        if(LAME_LIBRARY)
+        # vcpkg's mp3lame port. Newer ports export a CMake config target; older
+        # ones only ship the lib (as libmp3lame.lib) + header. Handle both, and
+        # search both library name variants since MSVC find_library is prefix-
+        # sensitive.
+        find_package(mp3lame CONFIG QUIET)
+        if(TARGET mp3lame::mp3lame)
             set(LAME_FOUND TRUE)
-            set(LAME_LIBRARIES ${LAME_LIBRARY})
+            set(LAME_LIBRARIES mp3lame::mp3lame)
+            set(LAME_INCLUDE_DIRS "")
+        else()
+            find_library(LAME_LIBRARY NAMES mp3lame libmp3lame)
+            find_path(LAME_INCLUDE_DIR lame/lame.h)
+            if(LAME_LIBRARY)
+                set(LAME_FOUND TRUE)
+                set(LAME_LIBRARIES ${LAME_LIBRARY})
+                if(LAME_INCLUDE_DIR)
+                    set(LAME_INCLUDE_DIRS ${LAME_INCLUDE_DIR})
+                endif()
+            endif()
         endif()
     else()
         # Linux/Unix: Use pkg-config
