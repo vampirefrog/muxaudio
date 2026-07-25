@@ -617,8 +617,12 @@ if(IS_WASM)
         -sMODULARIZE=1
         -sEXPORT_NAME=createMuxAudioWasm
         -sALLOW_MEMORY_GROWTH=1
+        # The decoder is callback-based (mux_decoder_new takes a mux_emit_fn), so
+        # JS callers must wrap a JS function as a C function pointer. That needs
+        # addFunction + a growable function table.
+        -sALLOW_TABLE_GROWTH=1
         -sEXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS_JSON}
-        -sEXPORTED_RUNTIME_METHODS=['cwrap','setValue','getValue','UTF8ToString','HEAP8','HEAPU8','HEAP16','HEAPU16','HEAP32','HEAPU32','HEAPF32','HEAPF64']
+        -sEXPORTED_RUNTIME_METHODS=['cwrap','setValue','getValue','UTF8ToString','addFunction','removeFunction','HEAP8','HEAPU8','HEAP16','HEAPU16','HEAP32','HEAPU32','HEAPF32','HEAPF64']
         -sENVIRONMENT=web,worker
     )
 
