@@ -47,8 +47,11 @@ if(BUILD_ALL_CODECS)
     set(CODEC_OPUS ON)
     set(CODEC_FLAC ON)
     set(CODEC_MP3 ON)
+    # AAC builds under Emscripten (fdk-aac compiles cleanly to WASM via
+    # FetchContent below). AMR still needs opencore-amr/vo-amrwbenc, which we
+    # only wire up for native builds.
+    set(CODEC_AAC ON)
     if(NOT IS_WASM)
-        set(CODEC_AAC ON)
         set(CODEC_AMR ON)
         set(CODEC_AMR_WB ON)
     endif()
@@ -478,8 +481,33 @@ endif()
 # ==============================================================================
 # AAC Codec (Native only)
 # ==============================================================================
-if(CODEC_AAC AND NOT IS_WASM)
-    if(FDK_AAC_FOUND)
+if(CODEC_AAC)
+    if(IS_WASM)
+        message(STATUS "Enabling AAC codec (bundled fdk-aac from source)")
+        FetchContent_Declare(
+            fdk_aac
+            GIT_REPOSITORY https://github.com/mstorsjo/fdk-aac.git
+            GIT_TAG v2.0.3
+            GIT_SHALLOW TRUE
+        )
+        set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(fdk_aac)
+
+        # codec_aac.c includes <fdk-aac/aacdecoder_lib.h>, but the fdk-aac source
+        # tree exposes its public headers unprefixed (libAACdec/include/...). The
+        # vcpkg/system package installs them under fdk-aac/, so bridge the gap
+        # with a tiny prefix shim; the inner unprefixed include is satisfied by
+        # fdk-aac's own PUBLIC include dirs (propagated by linking fdk-aac).
+        set(FDK_SHIM "${CMAKE_CURRENT_BINARY_DIR}/fdk-shim")
+        file(WRITE "${FDK_SHIM}/fdk-aac/aacdecoder_lib.h" "#include <aacdecoder_lib.h>\n")
+        file(WRITE "${FDK_SHIM}/fdk-aac/aacenc_lib.h"     "#include <aacenc_lib.h>\n")
+
+        list(APPEND MUXAUDIO_SOURCES src/codec_aac.c)
+        list(APPEND MUXAUDIO_DEFINES -DHAVE_AAC)
+        list(APPEND MUXAUDIO_LIBRARIES fdk-aac)
+        list(APPEND MUXAUDIO_INCLUDES "${FDK_SHIM}")
+    elseif(FDK_AAC_FOUND)
         message(STATUS "Enabling AAC codec (system fdk-aac)")
         list(APPEND MUXAUDIO_SOURCES src/codec_aac.c)
         list(APPEND MUXAUDIO_DEFINES -DHAVE_AAC)
